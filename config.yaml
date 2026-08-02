@@ -1,0 +1,12 @@
+providers:
+  openai:
+    enabled: true
+    api_key: sk-...
+
+  anthropic:
+    enabled: true
+    api_key: sk-ant-...
+
+  gemini:
+    enabled: false
+    api_key:

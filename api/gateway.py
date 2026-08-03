@@ -43,7 +43,9 @@ class SmartLLM:
             print("[Cache] HIT")
 
             response = ChatResponse.from_dict(cached)
-
+            response.latency_ms = 0.5      
+            response.metadata["cached"] = True
+            
             self.tracker.log(
                 provider=response.provider,
                 model=response.model,

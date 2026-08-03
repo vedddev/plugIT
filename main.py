@@ -48,7 +48,7 @@ def main():
     print(f"Output      : {response.usage.output_tokens}")
     print(f"Total Tokens: {response.usage.total_tokens}")
     print(f"Cost        : ${response.cost}")
-
+    print("Cached     :", response.metadata.get("cached", False))
     print("\n========== Response ==========\n")
     print(response.content)
 

@@ -7,6 +7,7 @@ from analytics.tracker import AnalyticsTracker
 from cache.redis_cache import RedisCache
 from fallback.retry import RetryExecutor
 from fallback.circuit_breaker import CircuitBreaker
+from fallback.manager import CircuitManager
 
 class CircuitManager:
 
@@ -23,13 +24,18 @@ class CircuitManager:
 class SmartLLM:
 
     def __init__(self, registry: ProviderRegistry):
-
         self.registry = registry
         self.classifier = PromptClassifier()
         self.selector = ModelSelector(self.registry)
         self.calculator = PricingCalculator()
         self.tracker = AnalyticsTracker()
         self.cache = RedisCache()
+        self.circuit_manager = CircuitManager()
+        self.retry = RetryExecutor(
+                retries=3,
+                delay=1,
+                backoff=2,
+            )
 
     def chat(
         self,
@@ -45,7 +51,13 @@ class SmartLLM:
 
         # Step 3 - Get provider
         provider = self.registry.get(selection.provider)
+        
+        circuit = self.circuit_manager.get(selection.provider)
 
+        if not circuit.allow_request():
+            raise RuntimeError(
+                f"{selection.provider} circuit is OPEN"
+            )
         # Step 4 - Check Redis Cache
         cached = self.cache.get(
             prompt=prompt,
@@ -102,7 +114,8 @@ class SmartLLM:
                 messages=messages,
                 model=selection.model,
             )
-
+            
+            circuit.record_success()
             # Step 7 - Calculate Cost
             response.cost = self.calculator.calculate(
                 provider=response.provider,
@@ -131,11 +144,6 @@ class SmartLLM:
                 cached=False,
                 success=True,
             )
-            self.retry = RetryExecutor(
-                retries=3,
-                delay=1,
-                backoff=2,
-            )
 
             return response
 
@@ -154,5 +162,6 @@ class SmartLLM:
                 cached=False,
                 success=False,
             )
+            circuit.record_failure()
 
             raise

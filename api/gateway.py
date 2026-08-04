@@ -5,6 +5,19 @@ from router.selector import ModelSelector
 from pricing.calculator import PricingCalculator
 from analytics.tracker import AnalyticsTracker
 from cache.redis_cache import RedisCache
+from fallback.retry import RetryExecutor
+from fallback.circuit_breaker import CircuitBreaker
+
+class CircuitManager:
+
+    def __init__(self):
+        self.circuits = {}
+
+    def get(self, provider: str):
+        if provider not in self.circuits:
+            self.circuits[provider] = CircuitBreaker()
+        return self.circuits[provider]
+ 
 
 
 class SmartLLM:
@@ -84,7 +97,8 @@ class SmartLLM:
         try:
 
             # Step 6 - Call Provider
-            response = provider.chat(
+            response = self.retry.run(
+                provider.chat,
                 messages=messages,
                 model=selection.model,
             )
@@ -116,6 +130,11 @@ class SmartLLM:
                 cost=response.cost,
                 cached=False,
                 success=True,
+            )
+            self.retry = RetryExecutor(
+                retries=3,
+                delay=1,
+                backoff=2,
             )
 
             return response

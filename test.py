@@ -1,6 +1,22 @@
-from google import genai
+from fallback.retry import RetryExecutor
 
-client = genai.Client(api_key="")
 
-for model in client.models.list():
-    print(model.name)
+count = 0
+
+
+def fake_provider():
+    global count
+
+    count += 1
+
+    if count < 3:
+        raise Exception("Temporary failure")
+
+    return "Success!"
+
+
+retry = RetryExecutor()
+
+result = retry.run(fake_provider)
+
+print(result)

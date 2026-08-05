@@ -6,18 +6,9 @@ from pricing.calculator import PricingCalculator
 from analytics.tracker import AnalyticsTracker
 from cache.redis_cache import RedisCache
 from fallback.retry import RetryExecutor
-from fallback.circuit_breaker import CircuitBreaker
+# from fallback.circuit_breaker import CircuitBreaker
 from fallback.manager import CircuitManager
 
-class CircuitManager:
-
-    def __init__(self):
-        self.circuits = {}
-
-    def get(self, provider: str):
-        if provider not in self.circuits:
-            self.circuits[provider] = CircuitBreaker()
-        return self.circuits[provider]
  
 
 
@@ -49,21 +40,12 @@ class SmartLLM:
         # Step 2 - Select provider/model
         selection = self.selector.select(classification)
 
-        # Step 3 - Get provider
-        provider = self.registry.get(selection.provider)
-        
-        circuit = self.circuit_manager.get(selection.provider)
-
-        if not circuit.allow_request():
-            raise RuntimeError(
-                f"{selection.provider} circuit is OPEN"
-            )
-        # Step 4 - Check Redis Cache
         cached = self.cache.get(
             prompt=prompt,
             model=selection.model,
         )
-
+        
+        # Step 3 - Check Redis Cache
         if cached:
             print("[Cache] HIT")
 
@@ -85,9 +67,18 @@ class SmartLLM:
             )
 
             return response
-
         print("[Cache] MISS")
+        
+        # Step 4 - Get provider
+        provider = self.registry.get(selection.provider)
+        
+        circuit = self.circuit_manager.get(selection.provider)
 
+        if not circuit.allow_request():
+            raise RuntimeError(
+                f"{selection.provider} circuit is OPEN"
+            )
+        
         # Step 5 - Build messages
         messages = []
 

@@ -33,7 +33,7 @@ def main():
     gateway = SmartLLM(registry)
 
     # User Prompt
-    prompt = "Explain FastAPI"
+    prompt = "who is spiderman"
     response = gateway.chat(prompt)
 
     # Output

@@ -39,3 +39,13 @@ class ModelSelector:
             provider=provider,
             model=route["model"]
         )
+    def default_model(self, provider):
+
+        if provider == "groq":
+            return "llama-3.3-70b-versatile"
+        if provider == "gemini":
+            return "models/gemini-3.6-flash"
+        if provider == "openai":
+            return "gpt-oss-20b"
+
+        raise ValueError(provider)

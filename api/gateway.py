@@ -8,6 +8,8 @@ from cache.redis_cache import RedisCache
 from fallback.retry import RetryExecutor
 # from fallback.circuit_breaker import CircuitBreaker
 from fallback.manager import CircuitManager
+from fallback.fallback import FallbackExecutor
+
 
  
 
@@ -27,6 +29,7 @@ class SmartLLM:
                 delay=1,
                 backoff=2,
             )
+        self.fallback=FallbackExecutor(self.registry)
 
     def chat(
         self,
@@ -100,13 +103,29 @@ class SmartLLM:
         try:
 
             # Step 6 - Call Provider
-            response = self.retry.run(
-                provider.chat,
-                messages=messages,
-                model=selection.model,
-            )
-            
-            circuit.record_success()
+            try:
+
+                response = self.retry.run(
+                    provider.chat,
+                    messages=messages,
+                    model=selection.model,
+                )
+
+            except Exception:
+
+                print("[Gateway] Switching provider...")
+
+                providers = [
+                    p for p in self.registry.list()
+                    if p != selection.provider
+                ]
+
+                response = self.fallback.execute(
+                    providers=providers,
+                    messages=messages,
+                    model_selector=lambda p:
+                        self.selector.default_model(p),
+                )
             # Step 7 - Calculate Cost
             response.cost = self.calculator.calculate(
                 provider=response.provider,

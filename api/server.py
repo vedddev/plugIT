@@ -3,12 +3,14 @@ from fastapi import FastAPI
 from api.dependencies import gateway
 from api.schemas import ChatRequest, ChatResponseModel
 from fastapi.responses import StreamingResponse
+from api.openai_routes import router as openai_router
 
 app = FastAPI(
     title="SmartLLM",
     version="1.0.0",
 )
 
+app.include_router(openai_router)
 
 @app.get("/")
 def home():
@@ -67,20 +69,21 @@ def metrics():
         "status": "coming soon"
     }
 
+
 @app.post("/chat/stream")
 def chat_stream(request: ChatRequest):
 
-    generator = gateway.stream(
-        prompt=request.prompt,
-        system_prompt=request.system_prompt,
-    )
     def generate():
         for chunk in gateway.stream(
             prompt=request.prompt,
             system_prompt=request.system_prompt,
         ):
             yield f"data: {chunk}\n\n"
+
+        yield "event: done\ndata: [DONE]\n\n"
+
     return StreamingResponse(
-        generator,
-        media_type="text/plain",
+        generate(),
+        media_type="text/event-stream",
     )
+

@@ -1,22 +1,18 @@
-from fallback.retry import RetryExecutor
+from openai import OpenAI
 
+client = OpenAI(
+    api_key="dummy",
+    base_url="http://127.0.0.1:8000/v1",
+)
 
-count = 0
+response = client.chat.completions.create(
+    model="auto",
+    messages=[
+        {
+            "role": "user",
+            "content": "Who is Spider-Man?"
+        }
+    ],
+)
 
-
-def fake_provider():
-    global count
-
-    count += 1
-
-    if count < 3:
-        raise Exception("Temporary failure")
-
-    return "Success!"
-
-
-retry = RetryExecutor()
-
-result = retry.run(fake_provider)
-
-print(result)
+print(response.choices[0].message.content)

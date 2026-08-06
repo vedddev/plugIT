@@ -83,3 +83,24 @@ class GroqProvider(BaseProvider):
             return True
         except Exception:
             return False
+    def stream_chat(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+    ):
+        stream = self.client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": m.role,
+                    "content": m.content,
+                }
+                for m in messages
+            ],
+            stream=True,
+        )
+
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta

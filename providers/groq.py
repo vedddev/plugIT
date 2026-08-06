@@ -67,6 +67,7 @@ class GroqProvider(BaseProvider):
                 "id": response.id,
             },
         )
+        
 
     def list_models(self) -> List[str]:
         return [

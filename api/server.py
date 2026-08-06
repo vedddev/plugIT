@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from api.dependencies import gateway
 from api.schemas import ChatRequest, ChatResponseModel
+from fastapi.responses import StreamingResponse
 
 app = FastAPI(
     title="SmartLLM",
@@ -65,3 +66,21 @@ def metrics():
     return {
         "status": "coming soon"
     }
+
+@app.post("/chat/stream")
+def chat_stream(request: ChatRequest):
+
+    generator = gateway.stream(
+        prompt=request.prompt,
+        system_prompt=request.system_prompt,
+    )
+    def generate():
+        for chunk in gateway.stream(
+            prompt=request.prompt,
+            system_prompt=request.system_prompt,
+        ):
+            yield f"data: {chunk}\n\n"
+    return StreamingResponse(
+        generator,
+        media_type="text/plain",
+    )

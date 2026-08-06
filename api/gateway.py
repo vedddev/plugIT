@@ -100,6 +100,7 @@ class SmartLLM:
             )
         )
 
+
         try:
 
             # Step 6 - Call Provider
@@ -110,7 +111,9 @@ class SmartLLM:
                     messages=messages,
                     model=selection.model,
                 )
-
+                
+                circuit.record_success()
+                
             except Exception:
 
                 print("[Gateway] Switching provider...")
@@ -175,3 +178,34 @@ class SmartLLM:
             circuit.record_failure()
 
             raise
+    def stream(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+    ):
+        classification = self.classifier.classify(prompt)
+        selection = self.selector.select(classification)
+
+        provider = self.registry.get(selection.provider)
+
+        messages = []
+
+        if system_prompt:
+            messages.append(
+                ChatMessage(
+                    role="system",
+                    content=system_prompt,
+                )
+            )
+
+        messages.append(
+            ChatMessage(
+                role="user",
+                content=prompt,
+            )
+        )
+
+        return provider.stream_chat(
+            messages=messages,
+            model=selection.model,
+        )

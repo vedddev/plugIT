@@ -7,6 +7,7 @@ from api.gateway import SmartLLM
 from providers.registry import ProviderRegistry
 from providers.groq import GroqProvider
 from providers.gemini import GeminiProvider
+from analytics.usage import UsageTracker
 
 load_dotenv()
 
@@ -21,3 +22,4 @@ if gemini_key:
     registry.register(GeminiProvider(api_key=gemini_key))
 
 gateway = SmartLLM(registry)
+usage_tracker = UsageTracker()

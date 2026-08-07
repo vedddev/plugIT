@@ -1,7 +1,7 @@
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="dummy",
+    api_key="sk-smartllm-dev",
     base_url="http://127.0.0.1:8000/v1",
 )
 

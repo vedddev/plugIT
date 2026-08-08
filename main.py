@@ -33,7 +33,7 @@ def main():
     gateway = SmartLLM(registry)
 
     # User Prompt
-    prompt = "who is spiderman"
+    prompt = "who is inline function code"
     response = gateway.chat(prompt)
 
     # Output

@@ -35,13 +35,21 @@ class SmartLLM:
         self,
         prompt: str,
         system_prompt: str | None = None,
+        model: str | None = None,
     ) -> ChatResponse:
 
         # Step 1 - Classify
         classification = self.classifier.classify(prompt)
 
         # Step 2 - Select provider/model
-        selection = self.selector.select(classification)
+        if model:
+            selection = self.selector.select_by_model(model)
+        else:
+            selection = self.selector.select(classification)
+            
+        print(f"[Router] Requested model: {model}")
+        print(f"[Router] Selected provider: {selection.provider}")
+        print(f"[Router] Selected model: {selection.model}")
 
         cached = self.cache.get(
             prompt=prompt,
@@ -182,9 +190,13 @@ class SmartLLM:
         self,
         prompt: str,
         system_prompt: str | None = None,
+        model: str | None = None,
     ):
         classification = self.classifier.classify(prompt)
-        selection = self.selector.select(classification)
+        if model:
+            selection = self.selector.select_by_model(model)
+        else:
+            selection = self.selector.select(classification)
 
         provider = self.registry.get(selection.provider)
 

@@ -8,6 +8,7 @@ from api.auth import verify_api_key
 from api.rate_limit import rate_limit
 from api.dependencies import gateway, usage_tracker
 from api.openai_schemas import ChatCompletionRequest
+from api.quota import check_quota
 
 
 router = APIRouter(
@@ -39,28 +40,34 @@ def models(
         "data": data,
     }
 
-
 @router.post("/chat/completions")
 def chat(
     request: ChatCompletionRequest,
     api_key: str = Depends(rate_limit),
 ):
+    check_quota(api_key, usage_tracker)
+
     system_prompt = None
     prompt = ""
 
     for message in request.messages:
-
         if message.role == "system":
             system_prompt = message.content
 
         elif message.role == "user":
             prompt += message.content + "\n"
 
-    try:
+    # "auto" means SmartLLM chooses the model from the prompt
+    model = request.model
 
+    if model == "auto":
+        model = None
+
+    try:
         response = gateway.chat(
             prompt=prompt.strip(),
             system_prompt=system_prompt,
+            model=model,
         )
 
         usage_tracker.record(
@@ -71,6 +78,7 @@ def chat(
             cost=response.cost,
             success=True,
         )
+
         return {
             "id": f"chatcmpl-{uuid.uuid4().hex}",
             "object": "chat.completion",
@@ -94,13 +102,12 @@ def chat(
         }
 
     except Exception:
-
         usage_tracker.record(
             api_key=api_key,
             success=False,
         )
-
         raise
+
 
 
 @router.post("/chat/completions/stream")
@@ -108,22 +115,28 @@ def stream(
     request: ChatCompletionRequest,
     api_key: str = Depends(rate_limit),
 ):
+    check_quota(api_key, usage_tracker)
+
     system_prompt = None
     prompt = ""
 
     for message in request.messages:
-
         if message.role == "system":
             system_prompt = message.content
 
         elif message.role == "user":
             prompt += message.content + "\n"
 
-    def generate():
+    model = request.model
 
+    if model == "auto":
+        model = None
+
+    def generate():
         for chunk in gateway.stream(
             prompt=prompt.strip(),
             system_prompt=system_prompt,
+            model=model,
         ):
             yield f"data: {chunk}\n\n"
 
@@ -133,8 +146,6 @@ def stream(
         generate(),
         media_type="text/event-stream",
     )
-
-
 @router.get("/usage")
 def usage(
     api_key: str = Depends(verify_api_key),

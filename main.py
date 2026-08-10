@@ -5,6 +5,7 @@ from api.gateway import SmartLLM
 from providers.groq import GroqProvider
 from providers.registry import ProviderRegistry
 from providers.gemini import GeminiProvider
+import redis
 
 load_dotenv()
 
@@ -33,7 +34,7 @@ def main():
     gateway = SmartLLM(registry)
 
     # User Prompt
-    prompt = "who is inline function code"
+    prompt = "write code for two sum"
     response = gateway.chat(prompt)
 
     # Output

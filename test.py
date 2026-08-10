@@ -1,18 +1,6 @@
-from openai import OpenAI
-
-client = OpenAI(
-    api_key="sk-smartllm-dev",
-    base_url="http://127.0.0.1:8000/v1",
-)
-
-response = client.chat.completions.create(
-    model="auto",
-    messages=[
-        {
-            "role": "user",
-            "content": "Who is Spider-Man?"
-        }
-    ],
-)
-
-print(response.choices[0].message.content)
+import os; 
+from dotenv import load_dotenv; 
+from google import genai; load_dotenv();
+client=genai.Client(api_key=os.environ['GEMINI_API_KEY']); 
+response=client.models.generate_content(model='models/gemini-3.6-flash', contents='Reply with exactly: Gemini API key works'); 
+print(response.text)

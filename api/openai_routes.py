@@ -2,13 +2,14 @@ import time
 import uuid
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 
 from api.auth import verify_api_key
 from api.rate_limit import rate_limit
 from api.dependencies import gateway, usage_tracker
 from api.openai_schemas import ChatCompletionRequest
 from api.quota import check_quota
+from router.exceptions import ModelNotFoundError
 
 
 router = APIRouter(
@@ -100,6 +101,10 @@ def chat(
                 "total_tokens": response.usage.total_tokens,
             },
         }
+
+    except ModelNotFoundError as error:
+        usage_tracker.record(api_key=api_key, success=False)
+        return JSONResponse(status_code=404, content={'error': {'message': str(error), 'type': 'invalid_request_error', 'param': 'model', 'code': 'model_not_found'}})
 
     except Exception:
         usage_tracker.record(

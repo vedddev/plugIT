@@ -5,6 +5,8 @@ from typing import List
 
 from google import genai
 
+from providers.models import PROVIDER_MODELS
+
 from providers.base import (
     BaseProvider,
     ChatMessage,
@@ -40,7 +42,7 @@ class GeminiProvider(BaseProvider):
     def chat(
         self,
         messages: List[ChatMessage],
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.6-flash",
         **kwargs,
     ) -> ChatResponse:
 
@@ -53,7 +55,7 @@ class GeminiProvider(BaseProvider):
         )
 
         response = self.client.models.generate_content(
-            model=model,
+            model=model if model.startswith("models/") else f"models/{model}",
             contents=prompt,
         )
 
@@ -86,12 +88,14 @@ class GeminiProvider(BaseProvider):
             metadata={}
         )
 
+    def stream_chat(self, messages: List[ChatMessage], model: str, **kwargs):
+        prompt = "\n".join(f"{message.role}: {message.content}" for message in messages)
+        for chunk in self.client.models.generate_content_stream(model=model if model.startswith("models/") else f"models/{model}", contents=prompt):
+            text = getattr(chunk, "text", None)
+            if text:
+                yield text
     def list_models(self):
-
-        return [
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-        ]
+        return list(PROVIDER_MODELS[self.name])
 
     def health_check(self):
 

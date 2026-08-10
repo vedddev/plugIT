@@ -1,33 +1,10 @@
-# config.py
+from providers.models import DEFAULT_MODELS
 
 ROUTING_POLICY = {
-    "coding": {
-        "provider": "groq",
-        "model": "llama-3.3-70b-versatile"
-    },
-
-    "translation": {
-        "provider": "groq",
-        "model": "llama-3.1-8b-instant"
-    },
-
-    "summarization": {
-        "provider": "groq",
-        "model": "llama-3.1-8b-instant"
-    },
-
-    "general": {
-        "provider": "groq",
-        "model": "llama-3.1-8b-instant"
-    },
-
-    "vision": {
-        "provider": "gemini",
-        "model": "models/gemini-3.6-flash"
-    },
-
-    "image_generation": {
-        "provider": "gemini",
-        "model": "models/gemini-3.1-flash-lite-image"
-    }
+    "coding": {"provider": "groq", "model": DEFAULT_MODELS["gemini"]},
+    "translation": {"provider": "groq", "model": DEFAULT_MODELS["gemini"]},
+    "summarization": {"provider": "groq", "model": DEFAULT_MODELS["gemini"]},
+    "general": {"provider": "groq", "model": DEFAULT_MODELS["gemini"]},
+    "vision": {"provider": "gemini", "model": DEFAULT_MODELS["gemini"]},
+    "image_generation": {"provider": "gemini", "model": DEFAULT_MODELS["gemini"]},
 }

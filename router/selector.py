@@ -1,9 +1,9 @@
-# router/selector.py
 from dataclasses import dataclass
-
 from config import ROUTING_POLICY
 from router.classifier import Classification
 from providers.registry import ProviderRegistry
+from providers.models import DEFAULT_MODELS
+from router.exceptions import ModelNotFoundError
 
 
 @dataclass
@@ -13,65 +13,34 @@ class Selection:
 
 
 class ModelSelector:
-
     def __init__(self, registry: ProviderRegistry):
         self.registry = registry
 
     def select(self, result: Classification) -> Selection:
-
-        route = ROUTING_POLICY.get(
-            result.task,
-            ROUTING_POLICY["general"]
-        )
-
+        route = ROUTING_POLICY.get(result.task, ROUTING_POLICY["general"])
         provider = route["provider"]
-
-        # If the provider isn't registered, fall back
         if not self.registry.exists(provider):
-            print(
-                f"[Router] {provider} not available. "
-                f"Falling back to Groq."
-            )
-
-            provider = "groq"
-            route = ROUTING_POLICY["general"]
-
-        return Selection(
-            provider=provider,
-            model=route["model"]
-        )
+            provider = next(iter(self.registry.list()), None)
+            if provider is None:
+                raise RuntimeError("No providers are registered.")
+            model = self.default_model(provider)
+        else:
+            model = route["model"]
+        if model not in self.registry.get(provider).list_models():
+            model = self.default_model(provider)
+        return Selection(provider=provider, model=model)
 
     def select_by_model(self, model: str) -> Selection:
-        """
-        Find the provider that owns the requested model.
-        Used by the OpenAI-compatible API when the client
-        explicitly sends a model name.
-        """
-
         for provider in self.registry.providers.values():
+            if model in provider.list_models():
+                return Selection(provider=provider.name, model=model)
+        raise ModelNotFoundError(f"Model '{model}' is not available.")
 
-            models = provider.list_models()
-
-            if model in models:
-                return Selection(
-                    provider=provider.name,
-                    model=model,
-                )
-
-        raise ValueError(
-            f"Model '{model}' is not available."
-        )
-
-    def default_model(self, provider):
-
-        if provider == "groq":
-            return "llama-3.3-70b-versatile"
-
-        if provider == "gemini":
-            return "gemini-2.5-flash"
-
-        if provider == "openai":
-            return "gpt-oss-20b"
-
-        raise ValueError(provider)
-
+    def default_model(self, provider: str) -> str:
+        models = self.registry.get(provider).list_models()
+        default = DEFAULT_MODELS.get(provider)
+        if default in models:
+            return default
+        if models:
+            return models[0]
+        raise ValueError(f"Provider '{provider}' has no registered models.")

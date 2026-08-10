@@ -1,56 +1,20 @@
 import hashlib
 import json
-
 import redis
 
 
 class RedisCache:
-
-    def __init__(
-        self,
-        host="localhost",
-        port=6379,
-        db=0,
-        ttl=3600,
-    ):
-        self.client = redis.Redis(
-            host=host,
-            port=port,
-            db=db,
-            decode_responses=True,
-        )
-
+    def __init__(self, host="localhost", port=6379, db=0, ttl=3600):
+        self.client = redis.Redis(host=host, port=port, db=db, decode_responses=True)
         self.ttl = ttl
 
-    def _key(self, prompt: str, model: str):
-
-        raw = f"{model}:{prompt}"
-
+    def _key(self, prompt: str, model: str, system_prompt: str | None = None):
+        raw = json.dumps({"model": model, "prompt": prompt, "system_prompt": system_prompt or ""}, sort_keys=True)
         return hashlib.sha256(raw.encode()).hexdigest()
 
-    def get(self, prompt: str, model: str):
+    def get(self, prompt: str, model: str, system_prompt: str | None = None):
+        value = self.client.get(self._key(prompt, model, system_prompt))
+        return json.loads(value) if value else None
 
-        key = self._key(prompt, model)
-
-        value = self.client.get(key)
-
-        if value:
-
-            return json.loads(value)
-
-        return None
-
-    def set(
-        self,
-        prompt: str,
-        model: str,
-        response: dict,
-    ):
-
-        key = self._key(prompt, model)
-
-        self.client.setex(
-            key,
-            self.ttl,
-            json.dumps(response),
-        )
+    def set(self, prompt: str, model: str, response: dict, system_prompt: str | None = None):
+        self.client.setex(self._key(prompt, model, system_prompt), self.ttl, json.dumps(response))

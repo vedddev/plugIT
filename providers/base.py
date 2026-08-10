@@ -81,29 +81,14 @@ class BaseProvider(ABC):
         Send a chat request to the provider.
         """
         pass
+    @abstractmethod
     def stream_chat(
         self,
         messages: List[ChatMessage],
         model: str,
         **kwargs,
     ):
-        stream = self.client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": m.role,
-                    "content": m.content,
-                }
-                for m in messages
-            ],
-            stream=True,
-            **kwargs,
-        )
-
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content
-            if delta:
-                yield delta
+        raise NotImplementedError("Providers must implement provider-native streaming.")
     @abstractmethod
     def list_models(self) -> List[str]:
         """

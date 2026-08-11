@@ -1,7 +1,7 @@
 import time
 
-from fastapi import HTTPException
 from redis import Redis
+from errors.exceptions import RateLimitError
 
 
 class RateLimiter:
@@ -33,16 +33,7 @@ class RateLimiter:
         remaining = max(self.limit - current, 0)
 
         if current > self.limit:
-            raise HTTPException(
-                status_code=429,
-                detail="Rate limit exceeded. Try again later.",
-                headers={
-                    "Retry-After": str(max(ttl, 1)),
-                    "X-RateLimit-Limit": str(self.limit),
-                    "X-RateLimit-Remaining": "0",
-                    "X-RateLimit-Reset": str(max(ttl, 0)),
-                },
-            )
+            raise RateLimitError("Rate limit exceeded.")
 
         return {
             "limit": self.limit,

@@ -6,6 +6,9 @@ from providers.registry import ProviderRegistry
 from router.exceptions import ModelNotFoundError
 import asyncio
 import json
+from fastapi import FastAPI
+from api.errors import register_exception_handlers
+from errors.exceptions import AuthenticationError, InvalidModelError, SmartLLMError
 
 
 class FakeProvider(BaseProvider):
@@ -51,6 +54,26 @@ class MemoryCache:
 
 
 class RoutingTests(unittest.TestCase):
+    def test_custom_error_handlers_preserve_http_status(self):
+        app = FastAPI()
+        register_exception_handlers(app)
+        handler = app.exception_handlers[SmartLLMError]
+        response = asyncio.run(handler(None, AuthenticationError("Invalid API key.")))
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(json.loads(response.body)["error"]["code"], "invalid_api_key")
+
+        response = asyncio.run(handler(None, InvalidModelError("Model 'bad' is not available.")))
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(json.loads(response.body)["error"]["code"], "model_not_found")
+
+    def test_unexpected_error_handler_returns_safe_500(self):
+        app = FastAPI()
+        register_exception_handlers(app)
+        handler = app.exception_handlers[Exception]
+        response = asyncio.run(handler(None, RuntimeError("secret value")))
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn("secret value", response.body.decode())
+
     def gateway(self, gemini_fail=False, groq_fail=False):
         registry = ProviderRegistry()
         self.gemini = FakeProvider("gemini", ["gemini-2.5-flash"], gemini_fail)
@@ -129,11 +152,29 @@ class RoutingTests(unittest.TestCase):
         usage = MemoryUsageTracker()
         openai_routes.gateway, openai_routes.usage_tracker = gateway, usage
         try:
-            response = openai_routes._stream_response("hello", None, "does-not-exist", "test-key")
+            with self.assertRaises(ModelNotFoundError):
+                openai_routes._stream_response("hello", None, "does-not-exist", "test-key")
         finally:
             openai_routes.gateway, openai_routes.usage_tracker = old_gateway, old_tracker
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(json.loads(response.body)["error"]["code"], "model_not_found")
+        self.assertEqual(usage.records[-1]["success"], False)
+
+    def test_openai_sse_provider_failure_sends_error_and_done(self):
+        registry = ProviderRegistry()
+        provider = StreamProvider("groq", ["llama-3.3-70b-versatile"], chunks=("first",), fail_after=True)
+        registry.register(provider)
+        gateway = SmartLLM(registry); gateway.retry.retries = 1
+        old_gateway, old_tracker = openai_routes.gateway, openai_routes.usage_tracker
+        usage = MemoryUsageTracker()
+        openai_routes.gateway, openai_routes.usage_tracker = gateway, usage
+        try:
+            response = openai_routes._stream_response("hello", None, None, "test-key")
+            async def collect():
+                return [part async for part in response.body_iterator]
+            events = asyncio.run(collect())
+        finally:
+            openai_routes.gateway, openai_routes.usage_tracker = old_gateway, old_tracker
+        self.assertEqual(events[-1], "data: [DONE]\n\n")
+        self.assertEqual(json.loads(events[-2][6:])["error"]["code"], "provider_error")
         self.assertEqual(usage.records[-1]["success"], False)
 
 

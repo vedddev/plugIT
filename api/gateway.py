@@ -83,7 +83,12 @@ class SmartLLM:
 
     def chat(self, prompt: str, system_prompt: str | None = None, model: str | None = None) -> ChatResponse:
         selection = self._select(prompt, model)
-        cached = self.cache.get(prompt=prompt, model=selection.model, system_prompt=system_prompt)
+        try:
+            cached = self.cache.get(prompt=prompt, model=selection.model, system_prompt=system_prompt)
+        except Exception as error:
+            # Cache availability must never prevent a provider request.
+            print(f"[Cache] operation=get status=failed error={type(error).__name__}")
+            cached = None
         if cached:
             print("[Cache] HIT")
             response = ChatResponse.from_dict(cached)
@@ -95,7 +100,10 @@ class SmartLLM:
         try:
             response = self._call(selection, self._messages(prompt, system_prompt))
             response.cost = self.calculator.calculate(response.provider, response.model, response.usage.input_tokens, response.usage.output_tokens)
-            self.cache.set(prompt=prompt, model=selection.model, system_prompt=system_prompt, response=response.to_dict())
+            try:
+                self.cache.set(prompt=prompt, model=selection.model, system_prompt=system_prompt, response=response.to_dict())
+            except Exception as error:
+                print(f"[Cache] operation=set status=failed error={type(error).__name__}")
             self.tracker.log(provider=response.provider, model=response.model, prompt=prompt, input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens, total_tokens=response.usage.total_tokens, latency_ms=response.latency_ms, cost=response.cost, success=True)
             return response
         except Exception:

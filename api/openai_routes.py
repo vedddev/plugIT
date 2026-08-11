@@ -3,7 +3,7 @@ import time
 import uuid
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 
 from api.auth import verify_api_key
 from api.rate_limit import rate_limit
@@ -11,6 +11,7 @@ from api.dependencies import gateway, usage_tracker
 from api.openai_schemas import ChatCompletionRequest
 from api.quota import check_quota
 from router.exceptions import AllProvidersFailedError, ModelNotFoundError
+from api.errors import error_body
 
 
 router = APIRouter(
@@ -96,11 +97,11 @@ def chat(
 
     except ModelNotFoundError as error:
         usage_tracker.record(api_key=api_key, success=False)
-        return JSONResponse(status_code=404, content={'error': {'message': str(error), 'type': 'invalid_request_error', 'param': 'model', 'code': 'model_not_found'}})
+        raise
 
     except AllProvidersFailedError:
         usage_tracker.record(api_key=api_key, success=False)
-        return _provider_error()
+        raise
     except Exception:
         usage_tracker.record(
             api_key=api_key,
@@ -131,13 +132,6 @@ def _sse(payload: dict | str) -> str:
     return f"data: {data}\n\n"
 
 
-def _provider_error() -> JSONResponse:
-    return JSONResponse(
-        status_code=503,
-        content={"error": {"message": "All available providers failed.", "type": "server_error", "param": None, "code": "provider_error"}},
-    )
-
-
 def _stream_response(prompt: str, system_prompt: str | None, model: str | None, api_key: str):
     """Preflight before returning StreamingResponse so failures retain HTTP status.
 
@@ -150,10 +144,13 @@ def _stream_response(prompt: str, system_prompt: str | None, model: str | None, 
         prepared = gateway.prepare_stream(prompt=prompt, system_prompt=system_prompt, model=model)
     except ModelNotFoundError as error:
         usage_tracker.record(api_key=api_key, success=False)
-        return JSONResponse(status_code=404, content={"error": {"message": str(error), "type": "invalid_request_error", "param": "model", "code": "model_not_found"}})
+        raise
     except AllProvidersFailedError:
         usage_tracker.record(api_key=api_key, success=False)
-        return _provider_error()
+        raise
+    except Exception:
+        usage_tracker.record(api_key=api_key, success=False)
+        raise
 
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
     created = int(time.time())
@@ -177,6 +174,8 @@ def _stream_response(prompt: str, system_prompt: str | None, model: str | None, 
             # is no longer possible. Do not fall back after visible content.
             success = False
             print("[Stream] Stream failed after it started; not falling back")
+            yield _sse(error_body("Provider failed while streaming.", "server_error", "provider_error"))
+            yield _sse("[DONE]")
         finally:
             prepared.close()
             gateway.finish_stream(prepared, prompt, success)

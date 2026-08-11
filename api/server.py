@@ -4,6 +4,7 @@ from api.dependencies import gateway
 from api.schemas import ChatRequest, ChatResponseModel
 from fastapi.responses import StreamingResponse
 from api.openai_routes import router as openai_router
+from api.errors import register_exception_handlers
 
 app = FastAPI(
     title="SmartLLM",
@@ -11,6 +12,7 @@ app = FastAPI(
 )
 
 app.include_router(openai_router)
+register_exception_handlers(app)
 
 @app.get("/")
 def home():

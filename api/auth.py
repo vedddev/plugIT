@@ -1,8 +1,9 @@
 
 import secrets
 
-from fastapi import HTTPException, Security
+from fastapi import Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from errors.exceptions import AuthenticationError
 
 security = HTTPBearer()
 
@@ -22,9 +23,6 @@ def verify_api_key(
         secrets.compare_digest(api_key, key)
         for key in API_KEYS
     ):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key",
-        )
+        raise AuthenticationError("Invalid API key.")
 
     return API_KEYS[api_key]

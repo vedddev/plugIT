@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 
 
@@ -6,10 +6,24 @@ class OpenAIMessage(BaseModel):
     role: str
     content: str
 
+    @field_validator("role")
+    @classmethod
+    def valid_role(cls, value: str) -> str:
+        if value not in {"system", "user", "assistant"}:
+            raise ValueError("Unsupported message role.")
+        return value
+
+    @field_validator("content")
+    @classmethod
+    def valid_content(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Message content must not be empty.")
+        return value
+
 
 class ChatCompletionRequest(BaseModel):
     model: str = "auto"
-    messages: List[OpenAIMessage]
+    messages: List[OpenAIMessage] = Field(min_length=1)
     stream: bool = False
 
 

@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from typing import Iterator
+
 from providers.base import ChatMessage, ChatResponse
 from providers.registry import ProviderRegistry
 from router.classifier import PromptClassifier
@@ -13,6 +16,22 @@ from router.exceptions import AllProvidersFailedError
 
 def is_auto_model(model: str | None) -> bool:
     return model is None or model.strip().lower() == "auto"
+
+
+@dataclass
+class PreparedStream:
+    """A provider stream whose first text delta has already been received."""
+
+    iterator: Iterator[str]
+    first_chunk: str
+    provider: str
+    model: str
+    circuit: object
+
+    def close(self) -> None:
+        close = getattr(self.iterator, "close", None)
+        if close:
+            close()
 
 
 class SmartLLM:
@@ -83,34 +102,80 @@ class SmartLLM:
             self.tracker.log(provider=selection.provider, model=selection.model, prompt=prompt, input_tokens=0, output_tokens=0, total_tokens=0, latency_ms=0, cost=0, success=False)
             raise
 
-    def stream(self, prompt: str, system_prompt: str | None = None, model: str | None = None):
+    def prepare_stream(self, prompt: str, system_prompt: str | None = None, model: str | None = None) -> PreparedStream:
+        """Open a stream and obtain its first delta before any HTTP bytes are sent.
+
+        Only failures at this stage are eligible for retry/fallback.  Switching
+        providers after a content delta would mix two completions.
+        """
         selection = self._select(prompt, model)
         messages = self._messages(prompt, system_prompt)
         candidates = [selection.provider] + self._fallback_providers(selection.provider)
+        failures = {}
+        for provider_name in candidates:
+            circuit = self.circuit_manager.get(provider_name)
+            if not circuit.allow_request():
+                failures[provider_name] = RuntimeError("circuit is OPEN")
+                continue
+            chosen_model = selection.model if provider_name == selection.provider else self.selector.default_model(provider_name)
+            provider = self.registry.get(provider_name)
+            try:
+                print(f"[Stream] Starting provider stream: {provider_name}")
+                iterator, first = self.retry.run(lambda: self._open_stream(provider, messages, chosen_model))
+                print("[Stream] First chunk received")
+                return PreparedStream(iterator, first, provider_name, chosen_model, circuit)
+            except Exception as error:
+                circuit.record_failure()
+                failures[provider_name] = error
+                print(f"[Stream] {provider_name} failed before first chunk")
+                print("[Gateway] Switching provider...")
+        raise AllProvidersFailedError(failures)
+
+    def finish_stream(self, prepared: PreparedStream, prompt: str, success: bool | None) -> None:
+        """Record a completed stream; ``None`` is a client-aborted stream."""
+        if success is True:
+            prepared.circuit.record_success()
+            self.tracker.log(provider=prepared.provider, model=prepared.model, prompt=prompt, input_tokens=0, output_tokens=0, total_tokens=0, latency_ms=0, cost=0, success=True)
+            print("[Stream] Stream completed")
+        elif success is False:
+            prepared.circuit.record_failure()
+            self.tracker.log(provider=prepared.provider, model=prepared.model, prompt=prompt, input_tokens=0, output_tokens=0, total_tokens=0, latency_ms=0, cost=0, success=False)
+            print("[Stream] Stream failed after it started; not falling back")
+
+    def stream(self, prompt: str, system_prompt: str | None = None, model: str | None = None):
+        """Backward-compatible text-delta iterator for non-OpenAI callers."""
+        prepared = self.prepare_stream(prompt, system_prompt, model)
+        return self.consume_prepared_stream(prepared, prompt)
+
+    def consume_prepared_stream(self, prepared: PreparedStream, prompt: str):
+        """Yield a preflighted stream and finalize its circuit/analytics state."""
         def generate():
-            failures = {}
-            for provider_name in candidates:
-                circuit = self.circuit_manager.get(provider_name)
-                if not circuit.allow_request():
-                    failures[provider_name] = RuntimeError("circuit is OPEN")
-                    continue
-                chosen_model = selection.model if provider_name == selection.provider else self.selector.default_model(provider_name)
-                provider = self.registry.get(provider_name)
-                try:
-                    iterator, first = self.retry.run(lambda: self._open_stream(provider, messages, chosen_model))
-                    circuit.record_success()
-                    yield first
-                    for chunk in iterator:
-                        yield chunk
-                    return
-                except Exception as error:
-                    circuit.record_failure()
-                    failures[provider_name] = error
-                    print(f"[Fallback] {provider_name} failed before streaming started")
-            raise AllProvidersFailedError(failures)
+            success = None
+            try:
+                yield prepared.first_chunk
+                yield from prepared.iterator
+                success = True
+            except Exception:
+                success = False
+                raise
+            finally:
+                prepared.close()
+                self.finish_stream(prepared, prompt, success)
+
         return generate()
 
     @staticmethod
     def _open_stream(provider, messages, model):
         iterator = iter(provider.stream_chat(messages=messages, model=model))
-        return iterator, next(iterator)
+        try:
+            return iterator, next(iterator)
+        except StopIteration as error:
+            close = getattr(iterator, "close", None)
+            if close:
+                close()
+            raise RuntimeError("Provider stream ended before producing content.") from error
+        except Exception:
+            close = getattr(iterator, "close", None)
+            if close:
+                close()
+            raise

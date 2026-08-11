@@ -11,6 +11,7 @@ from providers.base import (
     ChatResponse,
     Usage,
 )
+from providers.models import PROVIDER_MODELS
 
 
 class GroqProvider(BaseProvider):
@@ -70,12 +71,7 @@ class GroqProvider(BaseProvider):
         
 
     def list_models(self) -> List[str]:
-        return [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "qwen/qwen3-32b",
-            "deepseek-r1-distill-llama-70b",
-        ]
+        return list(PROVIDER_MODELS[self.name])
 
     def health_check(self) -> bool:
         try:

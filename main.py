@@ -34,7 +34,7 @@ def main():
     gateway = SmartLLM(registry)
 
     # User Prompt
-    prompt = "write code for two sum"
+    prompt = "create image of happy face"
     response = gateway.chat(prompt)
 
     # Output

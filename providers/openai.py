@@ -11,6 +11,7 @@ from providers.base import (
     ChatResponse,
     Usage,
 )
+from providers.models import PROVIDER_MODELS
 
 
 class OpenAIProvider(BaseProvider):
@@ -77,13 +78,7 @@ class OpenAIProvider(BaseProvider):
         Later you can fetch these dynamically.
         """
 
-        return [
-            "gpt-5",
-            "gpt-5-mini",
-            "gpt-4.1",
-            "gpt-4.1-mini",
-            "gpt-4o",
-        ]
+        return list(PROVIDER_MODELS[self.name])
 
     def health_check(self) -> bool:
         try:
@@ -91,3 +86,15 @@ class OpenAIProvider(BaseProvider):
             return True
         except Exception:
             return False
+
+    def stream_chat(self, messages: List[ChatMessage], model: str, **kwargs):
+        stream = self.client.chat.completions.create(
+            model=model,
+            messages=[{"role": message.role, "content": message.content} for message in messages],
+            stream=True,
+            **kwargs,
+        )
+        for chunk in stream:
+            text = chunk.choices[0].delta.content
+            if text:
+                yield text

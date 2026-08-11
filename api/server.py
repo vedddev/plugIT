@@ -4,6 +4,7 @@ from api.dependencies import gateway
 from api.schemas import ChatRequest, ChatResponseModel
 from fastapi.responses import StreamingResponse
 from api.openai_routes import router as openai_router
+from api.admin_routes import router as admin_router
 from api.errors import register_exception_handlers
 
 app = FastAPI(
@@ -12,6 +13,7 @@ app = FastAPI(
 )
 
 app.include_router(openai_router)
+app.include_router(admin_router)
 register_exception_handlers(app)
 
 @app.get("/")

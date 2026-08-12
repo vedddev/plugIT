@@ -62,6 +62,7 @@ def chat(
             prompt=prompt.strip(),
             system_prompt=system_prompt,
             model=model,
+            api_key_id=api_key,
         )
 
         usage_tracker.record(
@@ -141,7 +142,7 @@ def _stream_response(prompt: str, system_prompt: str | None, model: str | None, 
     """
     print("[Stream] Request received")
     try:
-        prepared = gateway.prepare_stream(prompt=prompt, system_prompt=system_prompt, model=model)
+        prepared = gateway.prepare_stream(prompt=prompt, system_prompt=system_prompt, model=model, api_key_id=api_key)
     except ModelNotFoundError as error:
         usage_tracker.record(api_key=api_key, success=False)
         raise

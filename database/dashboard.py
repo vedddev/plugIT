@@ -1,0 +1,119 @@
+"""Read and write operations for the SmartLLM dashboard."""
+
+from datetime import datetime, timedelta, timezone
+from typing import Literal
+from uuid import uuid4
+
+from database.connection import session
+
+
+DashboardPeriod = Literal["today", "7d", "30d", "all"]
+PERIODS = {"today", "7d", "30d", "all"}
+
+
+def period_start(period: DashboardPeriod) -> str | None:
+    now = datetime.now(timezone.utc)
+    if period == "all":
+        return None
+    if period == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    return (now - timedelta(days=7 if period == "7d" else 30)).isoformat()
+
+
+def _where(period: DashboardPeriod) -> tuple[str, tuple]:
+    start = period_start(period)
+    return ("", ()) if start is None else (" WHERE created_at >= ?", (start,))
+
+
+def record_request(
+    *,
+    api_key_id: str,
+    provider: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    total_tokens: int,
+    latency_ms: float,
+    cost: float,
+    cached: bool,
+    success: bool,
+    database_url: str | None = None,
+    created_at: str | None = None,
+) -> None:
+    """Persist a future request event and its all-time per-key summary."""
+    created_at = created_at or datetime.now(timezone.utc).isoformat()
+    with session(database_url) as connection:
+        connection.execute(
+            """INSERT INTO request_events
+               (id, api_key_id, input_tokens, output_tokens, total_tokens, cost,
+                success, created_at, provider, model, latency_ms, cached)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (str(uuid4()), api_key_id, input_tokens, output_tokens, total_tokens, cost,
+             int(success), created_at, provider, model, latency_ms, int(cached)),
+        )
+        connection.execute(
+            """INSERT INTO usage_summaries
+               (api_key_id, requests, successful_requests, failed_requests, input_tokens,
+                output_tokens, total_tokens, cost, last_request_at)
+               VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(api_key_id) DO UPDATE SET
+                 requests = requests + 1,
+                 successful_requests = successful_requests + excluded.successful_requests,
+                 failed_requests = failed_requests + excluded.failed_requests,
+                 input_tokens = input_tokens + excluded.input_tokens,
+                 output_tokens = output_tokens + excluded.output_tokens,
+                 total_tokens = total_tokens + excluded.total_tokens,
+                 cost = cost + excluded.cost,
+                 last_request_at = excluded.last_request_at""",
+            (api_key_id, int(success), int(not success), input_tokens, output_tokens,
+             total_tokens, cost, created_at),
+        )
+
+
+def stats(period: DashboardPeriod = "today", database_url: str | None = None) -> dict:
+    where, params = _where(period)
+    query = f"""SELECT COUNT(*) AS total_requests,
+                       COALESCE(SUM(success), 0) AS successful_requests,
+                       COALESCE(SUM(1 - success), 0) AS failed_requests,
+                       COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
+                       COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+                       COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                       COALESCE(SUM(cost), 0) AS total_cost,
+                       COALESCE(AVG(latency_ms), 0) AS average_latency,
+                       COALESCE(SUM(CASE WHEN cached = 1 THEN 1 ELSE 0 END), 0) AS cache_hits,
+                       COALESCE(SUM(CASE WHEN cached = 0 THEN 1 ELSE 0 END), 0) AS cache_misses
+                FROM request_events{where}"""
+    with session(database_url) as connection:
+        row = dict(connection.execute(query, params).fetchone())
+        today_requests = connection.execute(
+            "SELECT COUNT(*) FROM request_events WHERE created_at >= ?",
+            (period_start("today"),),
+        ).fetchone()[0]
+    row["total_cost"] = round(float(row["total_cost"]), 12)
+    cache_recorded = row["cache_hits"] + row["cache_misses"]
+    row["cache_hit_rate"] = (row["cache_hits"] / cache_recorded) if cache_recorded else 0.0
+    return {"period": period, "requests_today": today_requests, **row}
+
+
+def usage(period: DashboardPeriod = "today", database_url: str | None = None) -> dict:
+    where, params = _where(period)
+    def query(field: str) -> str:
+        filter_sql = f"{where} AND {field} IS NOT NULL" if where else f" WHERE {field} IS NOT NULL"
+        return f"""SELECT {field} AS name, COUNT(*) AS requests,
+                                      COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                                      COALESCE(SUM(cost), 0) AS total_cost
+                               FROM request_events{filter_sql} GROUP BY {field} ORDER BY requests DESC, name ASC"""
+    with session(database_url) as connection:
+        providers = [dict(row) for row in connection.execute(query("provider"), params)]
+        models = [dict(row) for row in connection.execute(query("model"), params)]
+    return {"period": period, "provider_usage": providers, "model_usage": models}
+
+
+def recent(period: DashboardPeriod = "today", limit: int = 20, database_url: str | None = None) -> list[dict]:
+    where, params = _where(period)
+    query = f"""SELECT id, api_key_id, provider, model, input_tokens, output_tokens,
+                       total_tokens, cost, success, latency_ms, cached, created_at
+                FROM request_events{where} ORDER BY created_at DESC LIMIT ?"""
+    with session(database_url) as connection:
+        return [{**dict(row), "success": bool(row["success"]), "cached": bool(row["cached"])}
+                for row in connection.execute(query, (*params, limit))]

@@ -6,6 +6,14 @@ from database.connection import connect
 from database.models import SCHEMA_STATEMENTS
 
 
+REQUEST_EVENT_COLUMNS = {
+    "provider": "TEXT",
+    "model": "TEXT",
+    "latency_ms": "REAL",
+    "cached": "INTEGER CHECK (cached IN (0, 1))",
+}
+
+
 def initialize_database(database_url: str | None = None) -> None:
     """Create the application tables and indexes if they do not exist.
 
@@ -17,6 +25,12 @@ def initialize_database(database_url: str | None = None) -> None:
     try:
         for statement in SCHEMA_STATEMENTS:
             connection.execute(statement)
+        existing_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(request_events)")
+        }
+        for name, definition in REQUEST_EVENT_COLUMNS.items():
+            if name not in existing_columns:
+                connection.execute(f"ALTER TABLE request_events ADD COLUMN {name} {definition}")
         connection.commit()
     except sqlite3.Error as error:
         connection.rollback()

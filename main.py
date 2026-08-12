@@ -35,9 +35,10 @@ def main():
     # Create Gateway
 
     gateway = SmartLLM(registry)
+    gateway.tracker.enable_database()
 
     # User Prompt
-    prompt = "write code for sum of two digit"
+    prompt = "create image of cat"
     response = gateway.chat(prompt)
 
     # Output

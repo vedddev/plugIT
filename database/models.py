@@ -34,7 +34,11 @@ SCHEMA_STATEMENTS = (
         total_tokens INTEGER NOT NULL CHECK (total_tokens >= 0),
         cost REAL NOT NULL CHECK (cost >= 0),
         success INTEGER NOT NULL CHECK (success IN (0, 1)),
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        provider TEXT,
+        model TEXT,
+        latency_ms REAL,
+        cached INTEGER CHECK (cached IN (0, 1))
     )
     """,
     "CREATE INDEX IF NOT EXISTS ix_request_events_api_key_id ON request_events(api_key_id)",
@@ -65,6 +69,10 @@ class RequestEvent:
     cost: float
     success: bool
     created_at: str
+    provider: str | None = None
+    model: str | None = None
+    latency_ms: float | None = None
+    cached: bool | None = None
 
 
 def request_event_from_row(row) -> RequestEvent | None:
@@ -80,4 +88,8 @@ def request_event_from_row(row) -> RequestEvent | None:
         cost=row["cost"],
         success=bool(row["success"]),
         created_at=row["created_at"],
+        provider=row["provider"],
+        model=row["model"],
+        latency_ms=row["latency_ms"],
+        cached=bool(row["cached"]) if row["cached"] is not None else None,
     )

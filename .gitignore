@@ -151,5 +151,7 @@ Desktop.ini
 logs/*.log
 logs/requests.jsonl
 !logs/.gitkeep
+smartllm.db
+smartllm.db-journal
 *.tmp
 *.bak

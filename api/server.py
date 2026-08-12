@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from api.dependencies import gateway
@@ -6,10 +8,19 @@ from fastapi.responses import StreamingResponse
 from api.openai_routes import router as openai_router
 from api.admin_routes import router as admin_router
 from api.errors import register_exception_handlers
+from database import initialize_database
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Initialize the application database before serving requests."""
+    initialize_database()
+    yield
 
 app = FastAPI(
     title="SmartLLM",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.include_router(openai_router)

@@ -6,11 +6,14 @@ from providers.groq import GroqProvider
 from providers.registry import ProviderRegistry
 from providers.gemini import GeminiProvider
 import redis
+from database import initialize_database
 
 load_dotenv()
 
 
 def main():
+
+    initialize_database()
 
     # Register Providers
 
@@ -34,7 +37,7 @@ def main():
     gateway = SmartLLM(registry)
 
     # User Prompt
-    prompt = "create image of happy face"
+    prompt = "write code for sum of two digit"
     response = gateway.chat(prompt)
 
     # Output

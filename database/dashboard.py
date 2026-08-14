@@ -106,7 +106,23 @@ def usage(period: DashboardPeriod = "today", database_url: str | None = None) ->
     with session(database_url) as connection:
         providers = [dict(row) for row in connection.execute(query("provider"), params)]
         models = [dict(row) for row in connection.execute(query("model"), params)]
-    return {"period": period, "provider_usage": providers, "model_usage": models}
+        # ISO-8601 timestamps sort correctly as strings, so this works for the
+        # UTC timestamps stored by the tracker and keeps the existing API shape.
+        time_series = [dict(row) for row in connection.execute(
+            f"""SELECT substr(created_at, 1, 10) AS date,
+                       COUNT(*) AS requests,
+                       COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                       COALESCE(SUM(cost), 0) AS total_cost
+                FROM request_events{where}
+                GROUP BY substr(created_at, 1, 10) ORDER BY date ASC""",
+            params,
+        )]
+    return {
+        "period": period,
+        "provider_usage": providers,
+        "model_usage": models,
+        "time_series": time_series,
+    }
 
 
 def recent(period: DashboardPeriod = "today", limit: int = 20, database_url: str | None = None) -> list[dict]:

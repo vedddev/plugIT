@@ -48,7 +48,9 @@ def test_dashboard_queries_return_filtered_statistics(tmp_path):
     assert today["average_latency"] == 75
     assert (today["cache_hits"], today["cache_misses"], today["cache_hit_rate"]) == (1, 1, 0.5)
     assert stats("all", database_url)["total_requests"] == 3
-    assert [item["name"] for item in usage("today", database_url)["provider_usage"]] == ["gemini", "groq"]
+    dashboard_usage = usage("today", database_url)
+    assert [item["name"] for item in dashboard_usage["provider_usage"]] == ["gemini", "groq"]
+    assert dashboard_usage["time_series"][0]["requests"] == 2
 
 
 def test_dashboard_endpoints_require_admin_and_use_isolated_database(tmp_path, monkeypatch):

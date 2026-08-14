@@ -1,6 +1,8 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from api.dependencies import gateway
 from api.schemas import ChatRequest, ChatResponseModel
@@ -29,6 +31,9 @@ app.include_router(openai_router)
 app.include_router(admin_router)
 app.include_router(dashboard_router)
 register_exception_handlers(app)
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+app.mount("/dashboard", StaticFiles(directory=FRONTEND_DIR, html=True), name="dashboard-ui")
 
 @app.get("/")
 def home():

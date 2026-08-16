@@ -1,7 +1,7 @@
 # analytics/tracker.py
 
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import json
 import logging
@@ -89,7 +89,7 @@ class AnalyticsTracker:
 
         entry = RequestLog(
             request_id=str(uuid.uuid4()),
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             provider=provider,
             model=model,
             prompt=prompt,

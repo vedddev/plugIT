@@ -3,8 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from api.auth import require_admin
-from errors.exceptions import AuthenticationError
+from api.auth import key_store, require_admin
 
 router = APIRouter(prefix="/admin/api-keys", tags=["API Key Management"])
 

@@ -1390,6 +1390,8 @@ body { background: var(--color-bg); color: var(--color-text); }
 .topbar__period-btn--active { color: #fff; background: var(--color-accent); box-shadow: 0 4px 14px rgba(139,92,246,.3); }
 .topbar__health--ok { color: var(--color-success); }
 .topbar__meta { gap: 10px; }
+.topbar__user { display: inline-flex; align-items: center; gap: 8px; color: var(--color-text); white-space: nowrap; }
+.topbar__avatar { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: var(--color-accent-soft); color: var(--color-accent-hover); font-size: 11px; font-weight: 700; letter-spacing: .02em; }
 .topbar__key { border-color: var(--color-border); background: rgba(255,255,255,.03); color: var(--color-text-muted); }
 .page { max-width: 1600px; width: 100%; margin: 0 auto; padding: 28px 32px 48px; gap: 22px; }
 .card, .stat-card { background: linear-gradient(145deg, rgba(16,19,30,.98), rgba(12,15,25,.98)); border-color: var(--color-border); border-radius: var(--radius-md); box-shadow: var(--color-shadow); }

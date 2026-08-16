@@ -15,6 +15,7 @@ import {
   formatLatency,
   formatNumber,
   formatPercent,
+  formatTime,
 } from "../services/format";
 import type { Period, ProviderMetric, RequestEvent } from "../types/api";
 
@@ -67,7 +68,7 @@ export function OverviewPage() {
     {
       key: "time",
       header: "Time",
-      cell: (r) => new Date(r.created_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+      cell: (r) => formatTime(r.created_at),
       width: "100px",
     },
     {

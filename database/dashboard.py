@@ -16,8 +16,8 @@ def period_start(period: DashboardPeriod) -> str | None:
     if period == "all":
         return None
     if period == "today":
-        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    return (now - timedelta(days=7 if period == "7d" else 30)).isoformat()
+        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
+    return (now - timedelta(days=7 if period == "7d" else 30)).isoformat().replace("+00:00", "Z")
 
 
 def _where(period: DashboardPeriod) -> tuple[str, tuple]:
@@ -41,7 +41,7 @@ def record_request(
     created_at: str | None = None,
 ) -> None:
     """Persist a future request event and its all-time per-key summary."""
-    created_at = created_at or datetime.now(timezone.utc).isoformat()
+    created_at = created_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     with session(database_url) as connection:
         connection.execute(
             """INSERT INTO request_events

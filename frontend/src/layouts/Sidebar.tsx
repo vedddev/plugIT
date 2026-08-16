@@ -7,7 +7,6 @@ import {
   KeyRound,
   BarChart3,
   Settings as SettingsIcon,
-  Activity,
 } from "lucide-react";
 
 const navItems = [
@@ -24,10 +23,10 @@ export function Sidebar() {
   return (
     <aside className="sidebar" aria-label="Primary navigation">
       <div className="sidebar__brand">
-        <div className="sidebar__logo">S</div>
+        <div className="sidebar__logo">R</div>
         <div className="sidebar__wordmark">
-          <span className="sidebar__name">SmartLLM</span>
-          <span className="sidebar__sub">Admin Console</span>
+          <span className="sidebar__name">Rim</span>
+          <span className="sidebar__sub">ADMIN CONSOLE</span>
         </div>
       </div>
       <nav className="sidebar__nav">
@@ -49,7 +48,7 @@ export function Sidebar() {
       </nav>
       <div className="sidebar__footer">
         <div className="sidebar__status">
-          <Activity size={14} className="sidebar__icon" />
+          <span className="sidebar__status-dot" />
           <div>
             <div className="sidebar__status-label">System status</div>
             <div className="sidebar__status-value">Local gateway</div>

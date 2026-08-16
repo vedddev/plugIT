@@ -16,10 +16,14 @@ export default defineConfig({
       },
     },
   },
-  server: {
+    server: {
     port: 5173,
     proxy: {
       "/health": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+      "/auth": {
         target: "http://127.0.0.1:8000",
         changeOrigin: true,
       },

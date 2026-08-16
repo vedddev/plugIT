@@ -38,7 +38,7 @@ def main():
     gateway.tracker.enable_database()
 
     # User Prompt
-    prompt = "create image of cat"
+    prompt = "write blog for daily life"
     response = gateway.chat(prompt)
 
     # Output

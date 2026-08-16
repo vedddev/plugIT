@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TopBar } from "../layouts/TopBar";
 import { StatCard } from "../components/StatCard";
 import { DataTable, type Column } from "../components/DataTable";
@@ -30,8 +30,11 @@ export function UsagePage() {
     if (err instanceof ApiError && err.isAuth) return;
     toast.show("error", "Could not load usage", err.message);
   };
-  if (statsAsync.error) handleError(statsAsync.error);
-  if (usageAsync.error) handleError(usageAsync.error);
+  useEffect(() => {
+    [statsAsync.error, usageAsync.error]
+      .filter((error): error is Error => error !== null)
+      .forEach(handleError);
+  }, [statsAsync.error, usageAsync.error]);
 
   const stats = statsAsync.data;
   const usage = usageAsync.data;

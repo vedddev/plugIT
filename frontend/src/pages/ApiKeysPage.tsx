@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Copy, RefreshCcw, X, ShieldOff } from "lucide-react";
 import { TopBar } from "../layouts/TopBar";
 import { Button } from "../components/Button";
@@ -26,7 +26,9 @@ export function ApiKeysPage() {
     toast.show("error", "API key operation failed", err.message);
   };
 
-  if (asyncState.error) handleError(asyncState.error);
+  useEffect(() => {
+    if (asyncState.error) handleError(asyncState.error);
+  }, [asyncState.error]);
 
   const data = asyncState.data?.data ?? [];
 
@@ -122,7 +124,7 @@ export function ApiKeysPage() {
     <>
       <TopBar
         title="API keys"
-        description="Manage tokens used to authenticate against the SmartLLM gateway."
+        description="Manage tokens used to authenticate against the Rim gateway."
         onRefresh={refresh}
         loading={asyncState.loading}
       />

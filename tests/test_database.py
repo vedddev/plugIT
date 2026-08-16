@@ -51,4 +51,4 @@ def test_initialize_database_is_idempotent(tmp_path):
     initialize_database(database_url)
     with connect(database_url) as connection:
         count = connection.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'").fetchone()[0]
-        assert count == 2
+        assert count == 4

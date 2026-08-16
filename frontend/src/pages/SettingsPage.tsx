@@ -4,6 +4,7 @@ import { Spinner } from "../components/Spinner";
 import { useAsync } from "../hooks/useAsync";
 import { api, ApiError } from "../services/api";
 import { useToast } from "../services/toast";
+import { useAuth } from "../services/AuthContext";
 import { formatRelative, formatTimestamp } from "../services/format";
 import type { FiltersResponse, ProvidersResponse } from "../types/api";
 
@@ -15,11 +16,7 @@ interface SettingsGroup {
 
 export function SettingsPage() {
   const toast = useToast();
-  const [adminKey, setAdminKey] = useState<string>("");
-
-  useEffect(() => {
-    setAdminKey(sessionStorage.getItem("smartllm.adminKey") ?? "");
-  }, []);
+  const { user } = useAuth();
 
   const providersAsync = useAsync(() => api.providers("all"), []);
   const filtersAsync = useAsync(() => api.filters(), []);
@@ -28,8 +25,11 @@ export function SettingsPage() {
     if (err instanceof ApiError && err.isAuth) return;
     toast.show("error", "Could not load settings", err.message);
   };
-  if (providersAsync.error) handleError(providersAsync.error);
-  if (filtersAsync.error) handleError(filtersAsync.error);
+  useEffect(() => {
+    [providersAsync.error, filtersAsync.error]
+      .filter((error): error is Error => error !== null)
+      .forEach(handleError);
+  }, [providersAsync.error, filtersAsync.error]);
 
   const providers: ProvidersResponse | null = providersAsync.data;
   const filters: FiltersResponse | null = filtersAsync.data;
@@ -37,11 +37,11 @@ export function SettingsPage() {
   const groups: SettingsGroup[] = [
     {
       title: "Gateway",
-      description: "General settings and current deployment of the SmartLLM gateway.",
+      description: "General settings and current deployment of the Rim gateway.",
       rows: [
         { label: "Admin API", value: window.location.origin },
         { label: "Dashboard", value: `${window.location.origin}/dashboard/` },
-        { label: "Auth header", value: "X-Admin-Key" },
+        { label: "Auth", value: "Secure HttpOnly session cookie" },
         { label: "Configured providers", value: providers?.registered?.join(", ") || "—" },
       ],
     },
@@ -81,19 +81,19 @@ export function SettingsPage() {
     <>
       <TopBar
         title="Settings"
-        description="Configuration currently exposed by the SmartLLM backend."
+        description="Configuration currently exposed by the Rim gateway."
       />
       <div className="page">
         <section className="card card--padded">
           <header className="card__header">
             <h2>Active session</h2>
-            <span className="card__subtitle">Browser-stored admin key</span>
+            <span className="card__subtitle">Secure account session</span>
           </header>
           <dl className="detail__grid">
             <div className="detail__row">
               <dt className="detail__label">Status</dt>
               <dd className="detail__value">
-                {adminKey ? (
+                {user ? (
                   <span className="pill pill--success">Signed in</span>
                 ) : (
                   <span className="pill pill--muted">Not signed in</span>
@@ -101,9 +101,9 @@ export function SettingsPage() {
               </dd>
             </div>
             <div className="detail__row">
-              <dt className="detail__label">Key prefix</dt>
+              <dt className="detail__label">Account</dt>
               <dd className="detail__value mono">
-                {adminKey ? `${adminKey.slice(0, 4)}…${adminKey.slice(-2)}` : "—"}
+                {user?.email || "—"}
               </dd>
             </div>
             <div className="detail__row">
@@ -124,8 +124,7 @@ export function SettingsPage() {
             </div>
           </dl>
           <p className="muted small">
-            The admin key is held in <code>sessionStorage</code> only. Closing
-            the tab clears it.
+            Authentication uses a server-side session in an HttpOnly cookie. Credentials are never exposed to browser JavaScript.
           </p>
         </section>
 

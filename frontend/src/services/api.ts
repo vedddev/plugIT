@@ -55,12 +55,6 @@ export interface ApiClient {
   rotateApiKey(id: string): Promise<ApiKeyCreated>;
 }
 
-let getAdminKey: () => string = () => "";
-
-export function configureApiClient(keyProvider: () => string): void {
-  getAdminKey = keyProvider;
-}
-
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -70,13 +64,9 @@ async function request<T>(
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const adminKey = getAdminKey();
-  if (adminKey) {
-    headers.set("X-Admin-Key", adminKey);
-  }
   let response: Response;
   try {
-    response = await fetch(path, { ...init, headers });
+    response = await fetch(path, { ...init, headers, credentials: "include" });
   } catch (error) {
     throw new ApiError(
       error instanceof Error ? error.message : "Network request failed.",
@@ -87,6 +77,7 @@ async function request<T>(
   const text = await response.text();
   const body = text ? safeJson(text) : null;
   if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event("rim:unauthorized"));
     const message =
       (body && typeof body === "object" && "detail" in body
         ? String((body as { detail: unknown }).detail)

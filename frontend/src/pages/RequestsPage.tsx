@@ -58,6 +58,12 @@ export function RequestsPage() {
     setPage(0);
   }, [period, provider, model, status, appliedSearch]);
 
+  useEffect(() => {
+    [requestsAsync.error, filtersAsync.error]
+      .filter((error): error is Error => error !== null)
+      .forEach(handleError);
+  }, [requestsAsync.error, filtersAsync.error]);
+
   const total = requestsAsync.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -70,9 +76,6 @@ export function RequestsPage() {
     if (err instanceof ApiError && err.isAuth) return;
     toast.show("error", "Could not load requests", err.message);
   };
-
-  if (requestsAsync.error) handleError(requestsAsync.error);
-  if (filtersAsync.error) handleError(filtersAsync.error);
 
   const providerOptions = filtersAsync.data?.providers ?? [];
   const modelOptions = filtersAsync.data?.models ?? [];
@@ -127,7 +130,7 @@ export function RequestsPage() {
     <>
       <TopBar
         title="Requests"
-        description="Inspect every request handled by the SmartLLM gateway."
+        description="Inspect every request handled by the Rim gateway."
         period={period}
         onPeriodChange={setPeriod}
         onRefresh={refresh}

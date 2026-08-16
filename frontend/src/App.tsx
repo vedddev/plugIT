@@ -8,12 +8,12 @@ import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { UsagePage } from "./pages/UsagePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AppLayout } from "./layouts/AppLayout";
-import { useAdminKey } from "./services/adminKey";
+import { useAuth } from "./services/AuthContext";
 import { ToastProvider } from "./services/toast";
 import { Spinner } from "./components/Spinner";
 
 function ProtectedRoutes() {
-  const { adminKey, ready } = useAdminKey();
+  const { user, ready } = useAuth();
   if (!ready) {
     return (
       <div className="full-center">
@@ -21,7 +21,7 @@ function ProtectedRoutes() {
       </div>
     );
   }
-  if (!adminKey) {
+  if (!user) {
     return <LoginPage />;
   }
   return (
@@ -46,6 +46,7 @@ export default function App() {
     <ToastProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<LoginPage registerMode />} />
         <Route path="/*" element={<ProtectedRoutes />} />
       </Routes>
     </ToastProvider>

@@ -13,6 +13,30 @@ from dataclasses import dataclass
 # intentionally no foreign key to the separate API-key SQLite database.
 SCHEMA_STATEMENTS = (
     """
+    CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'user',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_users_email ON users(email)",
+    """
+    CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_sessions_user_id ON sessions(user_id)",
+    "CREATE INDEX IF NOT EXISTS ix_sessions_expires_at ON sessions(expires_at)",
+    """
     CREATE TABLE IF NOT EXISTS usage_summaries (
         api_key_id TEXT PRIMARY KEY,
         requests INTEGER NOT NULL DEFAULT 0 CHECK (requests >= 0),

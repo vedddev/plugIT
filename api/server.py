@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from api.dependencies import gateway
@@ -10,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from api.openai_routes import router as openai_router
 from api.admin_routes import router as admin_router
 from api.dashboard_routes import router as dashboard_router
+from api.auth_routes import router as auth_router
 from api.errors import register_exception_handlers
 from database import initialize_database
 
@@ -22,14 +25,22 @@ async def lifespan(application: FastAPI):
     yield
 
 app = FastAPI(
-    title="SmartLLM",
+    title="Rim",
     version="1.0.0",
     lifespan=lifespan,
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[origin.strip() for origin in os.getenv("RIM_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(openai_router)
 app.include_router(admin_router)
 app.include_router(dashboard_router)
+app.include_router(auth_router)
 register_exception_handlers(app)
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
@@ -38,7 +49,7 @@ app.mount("/dashboard", StaticFiles(directory=FRONTEND_DIR, html=True), name="da
 @app.get("/")
 def home():
     return {
-        "message": "SmartLLM API",
+        "message": "Rim API",
         "status": "running",
     }
 

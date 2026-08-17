@@ -39,6 +39,7 @@ SCHEMA_STATEMENTS = (
     """
     CREATE TABLE IF NOT EXISTS usage_summaries (
         api_key_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL DEFAULT 'legacy-system' REFERENCES users(id) ON DELETE RESTRICT,
         requests INTEGER NOT NULL DEFAULT 0 CHECK (requests >= 0),
         successful_requests INTEGER NOT NULL DEFAULT 0 CHECK (successful_requests >= 0),
         failed_requests INTEGER NOT NULL DEFAULT 0 CHECK (failed_requests >= 0),
@@ -53,6 +54,7 @@ SCHEMA_STATEMENTS = (
     CREATE TABLE IF NOT EXISTS request_events (
         id TEXT PRIMARY KEY,
         api_key_id TEXT NOT NULL,
+        user_id TEXT NOT NULL DEFAULT 'legacy-system' REFERENCES users(id) ON DELETE RESTRICT,
         input_tokens INTEGER NOT NULL CHECK (input_tokens >= 0),
         output_tokens INTEGER NOT NULL CHECK (output_tokens >= 0),
         total_tokens INTEGER NOT NULL CHECK (total_tokens >= 0),

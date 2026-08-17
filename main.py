@@ -1,62 +1,51 @@
-from dotenv import load_dotenv
+import requests
 import os
-
-from api.gateway import SmartLLM
-from providers.groq import GroqProvider
-from providers.registry import ProviderRegistry
-from providers.gemini import GeminiProvider
-import redis
-from database import initialize_database
-
+from dotenv import load_dotenv
 load_dotenv()
+RIM_URL = "http://127.0.0.1:8000/v1/chat/completions"
 
+RIM_KEY = os.getenv("SMARTLLM_ADMIN_KEY")
 
-def main():
+body = {
+    "model": "llama-3.3-70b-versatile",
+    "messages": [
+        {
+            "role": "user",
+            "content": "Hello my friend."
+        }
+    ]
+}
 
-    initialize_database()
+headers = {
+    "Authorization": f"Bearer {RIM_KEY}",
+    "Content-Type": "application/json",
+}
 
-    # Register Providers
+print("Sending request to RIM...")
 
-    registry = ProviderRegistry()
+response = requests.post(
+    RIM_URL,
+    headers=headers,
+    json=body,
+    timeout=120,
+)
 
-    groq_key = os.getenv("GROQ_API_KEY")
-    gemini_key=os.getenv("GEMINI_API_KEY")
-    if groq_key:
-        registry.register(
-            GroqProvider(api_key=groq_key)
-        )
-    if gemini_key:
-        registry.register(
-            GeminiProvider(api_key=gemini_key)
-        )
-    print("Registered Providers:", registry.list())
-    print("-" * 50)
+print("HTTP status:", response.status_code)
 
-    # Create Gateway
+if response.ok:
+    data = response.json()
 
-    gateway = SmartLLM(registry)
-    gateway.tracker.enable_database()
+    print("\n========== SmartLLM/RIM ==========")
+    print("Request successful")
+    print("Model:", data.get("model"))
 
-    # User Prompt
-    prompt = "write blog for daily life"
-    response = gateway.chat(prompt)
+    content = data["choices"][0]["message"]["content"]
+    print("\nResponse:")
+    print(content)
 
-    # Output
+    print("\nUsage:")
+    print(data.get("usage"))
 
-    print("\n========== SmartLLM ==========")
-
-    print(f"Prompt      : {prompt}")
-    print(f"Provider    : {response.provider}")
-    print(f"Model       : {response.model}")
-    print(f"Latency     : {response.latency_ms:.2f} ms")
-    print(f"Input Tokens: {response.usage.input_tokens}")
-    print(f"Output      : {response.usage.output_tokens}")
-    print(f"Total Tokens: {response.usage.total_tokens}")
-    print(f"Cost        : ${response.cost}")
-    print("Cached     :", response.metadata.get("cached", False))
-    print("\n========== Response ==========\n")
-    print(response.content)
-
-
-if __name__ == "__main__":
-    main()
+else:
+    print("\nRequest failed:")
+    print(response.text)

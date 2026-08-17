@@ -10,6 +10,7 @@ from api.gateway import SmartLLM
 from providers.base import BaseProvider, ChatResponse, Usage
 from providers.registry import ProviderRegistry
 from database.dashboard import record_request, stats, usage
+from database.initialization import LEGACY_USER_ID
 from database.initialization import initialize_database
 
 
@@ -19,13 +20,13 @@ def _url(tmp_path):
 
 def _seed(database_url):
     now = datetime.now(timezone.utc)
-    record_request(api_key_id="key-a", provider="groq", model="llama", input_tokens=10,
+    record_request(api_key_id="key-a", user_id=LEGACY_USER_ID, provider="groq", model="llama", input_tokens=10,
                    output_tokens=5, total_tokens=15, latency_ms=100, cost=0.1,
                    cached=False, success=True, database_url=database_url, created_at=now.isoformat())
-    record_request(api_key_id="key-b", provider="gemini", model="flash", input_tokens=4,
+    record_request(api_key_id="key-b", user_id=LEGACY_USER_ID, provider="gemini", model="flash", input_tokens=4,
                    output_tokens=6, total_tokens=10, latency_ms=50, cost=0.2,
                    cached=True, success=False, database_url=database_url, created_at=now.isoformat())
-    record_request(api_key_id="key-c", provider="groq", model="llama", input_tokens=1,
+    record_request(api_key_id="key-c", user_id=LEGACY_USER_ID, provider="groq", model="llama", input_tokens=1,
                    output_tokens=1, total_tokens=2, latency_ms=20, cost=0.01,
                    cached=False, success=True, database_url=database_url,
                    created_at=(now - timedelta(days=31)).isoformat())
@@ -36,7 +37,7 @@ def test_dashboard_queries_return_filtered_statistics(tmp_path):
     initialize_database(database_url)
     _seed(database_url)
 
-    today = stats("today", database_url)
+    today = stats(LEGACY_USER_ID, "today", database_url)
     assert today["total_requests"] == 2
     assert today["requests_today"] == 2
     assert today["successful_requests"] == 1
@@ -47,8 +48,8 @@ def test_dashboard_queries_return_filtered_statistics(tmp_path):
     assert today["total_cost"] == 0.3
     assert today["average_latency"] == 75
     assert (today["cache_hits"], today["cache_misses"], today["cache_hit_rate"]) == (1, 1, 0.5)
-    assert stats("all", database_url)["total_requests"] == 3
-    dashboard_usage = usage("today", database_url)
+    assert stats(LEGACY_USER_ID, "all", database_url)["total_requests"] == 3
+    dashboard_usage = usage(LEGACY_USER_ID, "today", database_url)
     assert [item["name"] for item in dashboard_usage["provider_usage"]] == ["gemini", "groq"]
     assert dashboard_usage["time_series"][0]["requests"] == 2
 
@@ -84,8 +85,32 @@ def test_tracker_persists_future_dashboard_events(tmp_path):
     tracker.log(provider="groq", model="llama", prompt="test", input_tokens=2,
                 output_tokens=3, total_tokens=5, latency_ms=25, cost=0.05,
                 cached=True, success=True, api_key_id="key-a")
-    summary = stats("all", database_url)
+    summary = stats(LEGACY_USER_ID, "all", database_url)
     assert (summary["total_requests"], summary["cache_hits"], summary["total_tokens"]) == (1, 1, 5)
+
+
+def test_dashboard_isolation_uses_session_owner_not_query_parameters(tmp_path, monkeypatch):
+    database_url = _url(tmp_path)
+    monkeypatch.setenv("SMARTLLM_DB_URL", database_url)
+    from api.server import app
+    with TestClient(app) as user_a, TestClient(app) as user_b:
+        a = user_a.post("/auth/register", json={"name": "Vedant", "email": "a@example.com", "password": "safe-pass-123"})
+        b = user_b.post("/auth/register", json={"name": "User B", "email": "b@example.com", "password": "safe-pass-123"})
+        assert a.status_code == b.status_code == 201
+        assert a.json()["name"] == "Vedant"
+        record_request(api_key_id="key-a", user_id=a.json()["id"], provider="groq", model="llama",
+                       input_tokens=4, output_tokens=6, total_tokens=10, latency_ms=20, cost=0.01,
+                       cached=False, success=True, database_url=database_url)
+        # Account ids supplied by the browser are ignored: B still sees no A data.
+        assert user_b.get(f"/dashboard/stats?period=all&account_id={a.json()['id']}").json()["total_requests"] == 0
+        assert user_b.get("/dashboard/usage?period=all").json()["time_series"] == []
+        assert user_b.get("/dashboard/providers?period=all").json()["metrics"] == []
+        assert user_b.get("/dashboard/requests").json()["data"] == []
+        assert user_b.get("/dashboard/models?period=all").json()["observed_providers"] == []
+        assert user_b.get("/dashboard/filters").json() == {"providers": [], "models": []}
+        assert user_a.get("/dashboard/stats?period=all").json()["total_requests"] == 1
+        request_id = user_a.get("/dashboard/requests").json()["data"][0]["id"]
+        assert user_b.get(f"/dashboard/requests/{request_id}").status_code == 404
 
 
 class _Provider(BaseProvider):

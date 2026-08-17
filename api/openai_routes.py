@@ -2,11 +2,11 @@ import json
 import time
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from fastapi.responses import StreamingResponse
 
-from api.auth import verify_api_key
-from api.rate_limit import rate_limit
+from api.auth import require_api_key
+from api.rate_limit import limiter
 from api.dependencies import gateway, usage_tracker
 from api.openai_schemas import ChatCompletionRequest
 from api.quota import check_quota
@@ -22,8 +22,10 @@ router = APIRouter(
 
 @router.get("/models")
 def models(
-    user: str = Depends(rate_limit),
+    response: Response,
+    api_key: dict = Depends(require_api_key),
 ):
+    _apply_rate_limit(response, api_key["id"])
     data = []
 
     for provider in gateway.registry.providers.values():
@@ -46,9 +48,11 @@ def models(
 @router.post("/chat/completions")
 def chat(
     request: ChatCompletionRequest,
-    api_key: str = Depends(rate_limit),
+    response: Response,
+    api_key: dict = Depends(require_api_key),
 ):
-    check_quota(api_key, usage_tracker)
+    _apply_rate_limit(response, api_key["id"])
+    check_quota(api_key["id"], usage_tracker)
 
     system_prompt, prompt = _request_prompt(request)
     # ``auto`` is a gateway-level virtual model, not a provider model.
@@ -62,11 +66,12 @@ def chat(
             prompt=prompt.strip(),
             system_prompt=system_prompt,
             model=model,
-            api_key_id=api_key,
+            api_key_id=api_key["id"],
+            user_id=api_key["user_id"],
         )
 
         usage_tracker.record(
-            api_key=api_key,
+            api_key=api_key["id"],
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             total_tokens=response.usage.total_tokens,
@@ -97,24 +102,26 @@ def chat(
         }
 
     except ModelNotFoundError as error:
-        usage_tracker.record(api_key=api_key, success=False)
+        usage_tracker.record(api_key=api_key["id"], success=False)
         raise
 
     except AllProvidersFailedError:
-        usage_tracker.record(api_key=api_key, success=False)
+        usage_tracker.record(api_key=api_key["id"], success=False)
         raise
     except Exception:
         usage_tracker.record(
-            api_key=api_key,
+            api_key=api_key["id"],
             success=False,
         )
         raise
 @router.post("/chat/completions/stream")
 def stream(
     request: ChatCompletionRequest,
-    api_key: str = Depends(rate_limit),
+    response: Response,
+    api_key: dict = Depends(require_api_key),
 ):
-    check_quota(api_key, usage_tracker)
+    _apply_rate_limit(response, api_key["id"])
+    check_quota(api_key["id"], usage_tracker)
 
     system_prompt, prompt = _request_prompt(request)
     model = None if request.model.strip().lower() == "auto" else request.model
@@ -128,12 +135,19 @@ def _request_prompt(request: ChatCompletionRequest) -> tuple[str | None, str]:
     return ("\n".join(system_prompts) or None), prompt
 
 
+def _apply_rate_limit(response: Response, api_key_id: str) -> None:
+    result = limiter.check(api_key_id)
+    response.headers["X-RateLimit-Limit"] = str(result["limit"])
+    response.headers["X-RateLimit-Remaining"] = str(result["remaining"])
+    response.headers["X-RateLimit-Reset"] = str(result["reset"])
+
+
 def _sse(payload: dict | str) -> str:
     data = payload if isinstance(payload, str) else json.dumps(payload, separators=(",", ":"))
     return f"data: {data}\n\n"
 
 
-def _stream_response(prompt: str, system_prompt: str | None, model: str | None, api_key: str):
+def _stream_response(prompt: str, system_prompt: str | None, model: str | None, api_key: dict):
     """Preflight before returning StreamingResponse so failures retain HTTP status.
 
     A provider may be retried/fallen back only here, before any completion bytes
@@ -142,15 +156,15 @@ def _stream_response(prompt: str, system_prompt: str | None, model: str | None, 
     """
     print("[Stream] Request received")
     try:
-        prepared = gateway.prepare_stream(prompt=prompt, system_prompt=system_prompt, model=model, api_key_id=api_key)
+        prepared = gateway.prepare_stream(prompt=prompt, system_prompt=system_prompt, model=model, api_key_id=api_key["id"], user_id=api_key["user_id"])
     except ModelNotFoundError as error:
-        usage_tracker.record(api_key=api_key, success=False)
+        usage_tracker.record(api_key=api_key["id"], success=False)
         raise
     except AllProvidersFailedError:
-        usage_tracker.record(api_key=api_key, success=False)
+        usage_tracker.record(api_key=api_key["id"], success=False)
         raise
     except Exception:
-        usage_tracker.record(api_key=api_key, success=False)
+        usage_tracker.record(api_key=api_key["id"], success=False)
         raise
 
     completion_id = f"chatcmpl-{uuid.uuid4().hex}"
@@ -181,13 +195,13 @@ def _stream_response(prompt: str, system_prompt: str | None, model: str | None, 
             prepared.close()
             gateway.finish_stream(prepared, prompt, success)
             if success is not None:
-                usage_tracker.record(api_key=api_key, success=success)
+                usage_tracker.record(api_key=api_key["id"], success=success)
 
     return StreamingResponse(generate(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "Connection": "keep-alive"})
 
 
 @router.get("/usage")
 def usage(
-    api_key: str = Depends(verify_api_key),
+    api_key: dict = Depends(require_api_key),
 ):
-    return usage_tracker.get(api_key)
+    return usage_tracker.get(api_key["id"])

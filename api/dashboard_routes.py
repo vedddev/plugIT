@@ -4,7 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.admin_routes import require_admin
+from api.auth import require_admin
 from api.dependencies import gateway
 from providers.models import PROVIDER_MODELS
 from database.dashboard import (
@@ -25,24 +25,24 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"], dependencies=[Depend
 
 
 @router.get("/stats")
-def dashboard_stats(period: DashboardPeriod = Query("today")):
+def dashboard_stats(period: DashboardPeriod = Query("today"), user=Depends(require_admin)):
     """Return totals, cache metrics, and average latency for a time period."""
-    return stats(period)
+    return stats(user["id"], period)
 
 
 @router.get("/usage")
-def dashboard_usage(period: DashboardPeriod = Query("today")):
+def dashboard_usage(period: DashboardPeriod = Query("today"), user=Depends(require_admin)):
     """Return provider and model usage groups for a time period."""
-    return usage(period)
+    return usage(user["id"], period)
 
 
 @router.get("/recent")
 def dashboard_recent(
     period: DashboardPeriod = Query("today"),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=100), user=Depends(require_admin),
 ):
     """Return the newest application request events, newest first."""
-    return {"period": period, "data": recent_requests(period, limit)}
+    return {"period": period, "data": recent_requests(user["id"], period, limit)}
 
 
 @router.get("/requests")
@@ -53,11 +53,11 @@ def dashboard_requests(
     status: Literal["success", "failed", "cached", "all"] | None = Query(default=None),
     search: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    offset: int = Query(default=0, ge=0), user=Depends(require_admin),
 ):
     """Return a filtered, paginated list of request events."""
     return list_requests(
-        period=period,
+        user_id=user["id"], period=period,
         provider=provider,
         model=model,
         status=status if status and status != "all" else None,
@@ -68,16 +68,16 @@ def dashboard_requests(
 
 
 @router.get("/requests/{request_id}")
-def dashboard_request_detail(request_id: str):
+def dashboard_request_detail(request_id: str, user=Depends(require_admin)):
     """Return a single request event with derived metadata."""
-    record = request_detail(request_id)
+    record = request_detail(request_id, user["id"])
     if record is None:
         raise HTTPException(status_code=404, detail="Request event not found.")
     return record
 
 
 @router.get("/providers")
-def dashboard_providers(period: DashboardPeriod = Query("all")):
+def dashboard_providers(period: DashboardPeriod = Query("all"), user=Depends(require_admin)):
     """Per-provider performance and a list of registered provider names."""
     registered = sorted(gateway.registry.list())
     models_by_provider = {
@@ -88,7 +88,7 @@ def dashboard_providers(period: DashboardPeriod = Query("all")):
         name: bool(gateway.registry.get(name).health_check())
         for name in registered
     }
-    metrics = provider_breakdown(period)
+    metrics = provider_breakdown(user["id"], period)
     return {
         "period": period,
         "registered": registered,
@@ -101,7 +101,7 @@ def dashboard_providers(period: DashboardPeriod = Query("all")):
 
 
 @router.get("/models")
-def dashboard_models(period: DashboardPeriod = Query("all")):
+def dashboard_models(period: DashboardPeriod = Query("all"), user=Depends(require_admin)):
     """All known models (catalog + observed) and their usage aggregates."""
     catalog: dict[str, list[str]] = {}
     for provider in gateway.registry.providers.values():
@@ -110,9 +110,9 @@ def dashboard_models(period: DashboardPeriod = Query("all")):
     for provider, models in catalog.items():
         for model in models:
             known_pairs.add((model, provider))
-    for item in distinct_models():
+    for item in distinct_models(user["id"]):
         known_pairs.add((item["model"], item["provider"]))
-    aggregated = {(item["name"], item["provider"]): item for item in model_breakdown(period)}
+    aggregated = {(item["name"], item["provider"]): item for item in model_breakdown(user["id"], period)}
     data = []
     for (model, provider) in sorted(known_pairs, key=lambda pair: (pair[0], pair[1] or "")):
         row = aggregated.get((model, provider), {})
@@ -128,13 +128,13 @@ def dashboard_models(period: DashboardPeriod = Query("all")):
             "average_latency": float(row.get("average_latency", 0.0)),
             "error_rate": float(row.get("error_rate", 0.0)),
         })
-    return {"period": period, "data": data, "observed_providers": distinct_providers()}
+    return {"period": period, "data": data, "observed_providers": distinct_providers(user["id"])}
 
 
 @router.get("/filters")
-def dashboard_filters():
+def dashboard_filters(user=Depends(require_admin)):
     """Distinct provider/model values to populate filter controls."""
     return {
-        "providers": distinct_providers(),
-        "models": distinct_models(),
+        "providers": distinct_providers(user["id"]),
+        "models": distinct_models(user["id"]),
     }

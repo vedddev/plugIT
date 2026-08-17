@@ -10,7 +10,7 @@ export function formatNumber(value: number | null | undefined): string {
 
 export function formatInteger(value: number | null | undefined): string { return new Intl.NumberFormat().format(Math.round(Number(value) || 0)); }
 export function formatCost(value: number | null | undefined): string { const safe = Number(value) || 0; if (safe === 0) return "$0.00"; if (safe < 0.0001) return "<$0.0001"; if (safe < 1) return `$${safe.toFixed(4)}`; return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(safe); }
-export function formatLatency(value: number | null | undefined): string { const safe = Number(value) || 0; if (safe < 1) return "<1 ms"; if (safe < 1000) return `${Math.round(safe)} ms`; return `${(safe / 1000).toFixed(2)} s`; }
+export function formatLatency(value: number | null | undefined): string { const safe = Number(value) || 0; if (safe <= 0) return "0 ms"; if (safe < 1) return "<1 ms"; if (safe < 1000) return `${Math.round(safe)} ms`; return `${(safe / 1000).toFixed(2)} s`; }
 export function formatPercent(value: number | null | undefined, digits = 1): string { return `${((Number(value) || 0) * 100).toFixed(digits)}%`; }
 
 function parseTimestamp(value: string | Date | null | undefined): Date | null {

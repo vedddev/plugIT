@@ -20,14 +20,15 @@ def period_start(period: DashboardPeriod) -> str | None:
     return (now - timedelta(days=7 if period == "7d" else 30)).isoformat().replace("+00:00", "Z")
 
 
-def _where(period: DashboardPeriod) -> tuple[str, tuple]:
+def _where(user_id: str, period: DashboardPeriod) -> tuple[str, tuple]:
     start = period_start(period)
-    return ("", ()) if start is None else (" WHERE created_at >= ?", (start,))
+    return (" WHERE user_id = ?", (user_id,)) if start is None else (" WHERE user_id = ? AND created_at >= ?", (user_id, start))
 
 
 def record_request(
     *,
     api_key_id: str,
+    user_id: str = "legacy-system",
     provider: str,
     model: str,
     input_tokens: int,
@@ -45,17 +46,17 @@ def record_request(
     with session(database_url) as connection:
         connection.execute(
             """INSERT INTO request_events
-               (id, api_key_id, input_tokens, output_tokens, total_tokens, cost,
+               (id, api_key_id, user_id, input_tokens, output_tokens, total_tokens, cost,
                 success, created_at, provider, model, latency_ms, cached)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (str(uuid4()), api_key_id, input_tokens, output_tokens, total_tokens, cost,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (str(uuid4()), api_key_id, user_id, input_tokens, output_tokens, total_tokens, cost,
              int(success), created_at, provider, model, latency_ms, int(cached)),
         )
         connection.execute(
             """INSERT INTO usage_summaries
-               (api_key_id, requests, successful_requests, failed_requests, input_tokens,
+               (api_key_id, user_id, requests, successful_requests, failed_requests, input_tokens,
                 output_tokens, total_tokens, cost, last_request_at)
-               VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)
+               VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(api_key_id) DO UPDATE SET
                  requests = requests + 1,
                  successful_requests = successful_requests + excluded.successful_requests,
@@ -65,13 +66,13 @@ def record_request(
                  total_tokens = total_tokens + excluded.total_tokens,
                  cost = cost + excluded.cost,
                  last_request_at = excluded.last_request_at""",
-            (api_key_id, int(success), int(not success), input_tokens, output_tokens,
+            (api_key_id, user_id, int(success), int(not success), input_tokens, output_tokens,
              total_tokens, cost, created_at),
         )
 
 
-def stats(period: DashboardPeriod = "today", database_url: str | None = None) -> dict:
-    where, params = _where(period)
+def stats(user_id: str, period: DashboardPeriod = "today", database_url: str | None = None) -> dict:
+    where, params = _where(user_id, period)
     query = f"""SELECT COUNT(*) AS total_requests,
                        COALESCE(SUM(success), 0) AS successful_requests,
                        COALESCE(SUM(1 - success), 0) AS failed_requests,
@@ -86,8 +87,8 @@ def stats(period: DashboardPeriod = "today", database_url: str | None = None) ->
     with session(database_url) as connection:
         row = dict(connection.execute(query, params).fetchone())
         today_requests = connection.execute(
-            "SELECT COUNT(*) FROM request_events WHERE created_at >= ?",
-            (period_start("today"),),
+            "SELECT COUNT(*) FROM request_events WHERE user_id = ? AND created_at >= ?",
+            (user_id, period_start("today")),
         ).fetchone()[0]
     row["total_cost"] = round(float(row["total_cost"]), 12)
     cache_recorded = row["cache_hits"] + row["cache_misses"]
@@ -95,8 +96,8 @@ def stats(period: DashboardPeriod = "today", database_url: str | None = None) ->
     return {"period": period, "requests_today": today_requests, **row}
 
 
-def usage(period: DashboardPeriod = "today", database_url: str | None = None) -> dict:
-    where, params = _where(period)
+def usage(user_id: str, period: DashboardPeriod = "today", database_url: str | None = None) -> dict:
+    where, params = _where(user_id, period)
     def query(field: str) -> str:
         filter_sql = f"{where} AND {field} IS NOT NULL" if where else f" WHERE {field} IS NOT NULL"
         return f"""SELECT {field} AS name, COUNT(*) AS requests,
@@ -125,8 +126,8 @@ def usage(period: DashboardPeriod = "today", database_url: str | None = None) ->
     }
 
 
-def recent(period: DashboardPeriod = "today", limit: int = 20, database_url: str | None = None) -> list[dict]:
-    where, params = _where(period)
+def recent(user_id: str, period: DashboardPeriod = "today", limit: int = 20, database_url: str | None = None) -> list[dict]:
+    where, params = _where(user_id, period)
     query = f"""SELECT id, api_key_id, provider, model, input_tokens, output_tokens,
                        total_tokens, cost, success, latency_ms, cached, created_at
                 FROM request_events{where} ORDER BY created_at DESC LIMIT ?"""
@@ -138,6 +139,7 @@ def recent(period: DashboardPeriod = "today", limit: int = 20, database_url: str
 def list_requests(
     *,
     period: DashboardPeriod = "all",
+    user_id: str,
     provider: str | None = None,
     model: str | None = None,
     status: str | None = None,
@@ -147,8 +149,8 @@ def list_requests(
     database_url: str | None = None,
 ) -> dict:
     """Return a paginated, filtered request-events page for the admin UI."""
-    clauses: list[str] = []
-    params: list = []
+    clauses: list[str] = ["user_id = ?"]
+    params: list = [user_id]
     if period and period != "all":
         start = period_start(period)
         clauses.append("created_at >= ?")
@@ -191,14 +193,14 @@ def list_requests(
     }
 
 
-def request_detail(request_id: str, database_url: str | None = None) -> dict | None:
+def request_detail(request_id: str, user_id: str, database_url: str | None = None) -> dict | None:
     """Return a single request event with derived fields, or None if missing."""
     with session(database_url) as connection:
         row = connection.execute(
             """SELECT id, api_key_id, provider, model, input_tokens, output_tokens,
                       total_tokens, cost, success, latency_ms, cached, created_at
-               FROM request_events WHERE id = ?""",
-            (request_id,),
+               FROM request_events WHERE id = ? AND user_id = ?""",
+            (request_id, user_id),
         ).fetchone()
     if row is None:
         return None
@@ -208,9 +210,9 @@ def request_detail(request_id: str, database_url: str | None = None) -> dict | N
     return record
 
 
-def provider_breakdown(period: DashboardPeriod = "all", database_url: str | None = None) -> list[dict]:
+def provider_breakdown(user_id: str, period: DashboardPeriod = "all", database_url: str | None = None) -> list[dict]:
     """Per-provider aggregates (requests, tokens, cost, latency, error rate)."""
-    where, params = _where(period)
+    where, params = _where(user_id, period)
     filter_sql = f"{where} AND provider IS NOT NULL" if where else " WHERE provider IS NOT NULL"
     with session(database_url) as connection:
         rows = connection.execute(
@@ -240,9 +242,9 @@ def provider_breakdown(period: DashboardPeriod = "all", database_url: str | None
     ]
 
 
-def model_breakdown(period: DashboardPeriod = "all", database_url: str | None = None) -> list[dict]:
+def model_breakdown(user_id: str, period: DashboardPeriod = "all", database_url: str | None = None) -> list[dict]:
     """Per-model aggregates (requests, tokens, cost, latency, error rate)."""
-    where, params = _where(period)
+    where, params = _where(user_id, period)
     filter_sql = f"{where} AND model IS NOT NULL" if where else " WHERE model IS NOT NULL"
     with session(database_url) as connection:
         rows = connection.execute(
@@ -278,20 +280,20 @@ def model_breakdown(period: DashboardPeriod = "all", database_url: str | None = 
     ]
 
 
-def distinct_providers(database_url: str | None = None) -> list[str]:
+def distinct_providers(user_id: str, database_url: str | None = None) -> list[str]:
     """All distinct provider names recorded in request events."""
     with session(database_url) as connection:
         rows = connection.execute(
-            "SELECT DISTINCT provider FROM request_events WHERE provider IS NOT NULL ORDER BY provider ASC"
+            "SELECT DISTINCT provider FROM request_events WHERE user_id = ? AND provider IS NOT NULL ORDER BY provider ASC", (user_id,)
         ).fetchall()
     return [row["provider"] for row in rows]
 
 
-def distinct_models(database_url: str | None = None) -> list[dict]:
+def distinct_models(user_id: str, database_url: str | None = None) -> list[dict]:
     """All distinct model/provider pairs recorded in request events."""
     with session(database_url) as connection:
         rows = connection.execute(
             """SELECT DISTINCT model, provider FROM request_events
-               WHERE model IS NOT NULL ORDER BY model ASC"""
+               WHERE user_id = ? AND model IS NOT NULL ORDER BY model ASC""", (user_id,)
         ).fetchall()
     return [{"model": row["model"], "provider": row["provider"]} for row in rows]

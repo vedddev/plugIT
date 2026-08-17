@@ -25,7 +25,7 @@ function ProtectedRoutes() {
     return <LoginPage />;
   }
   return (
-    <AppLayout>
+    <AppLayout key={user.id}>
       <Routes>
         <Route path="/" element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<OverviewPage />} />

@@ -40,6 +40,14 @@ class KeyManagementTests(unittest.TestCase):
         with self.assertRaises(AuthenticationError):
             self.store.authenticate(expired)
 
+    def test_owner_scoped_key_operations_prevent_idor(self):
+        alice, _ = self.store.create("alice", user_id="user-a")
+        bob, _ = self.store.create("bob", user_id="user-b")
+        self.assertEqual([item["id"] for item in self.store.list("user-a")], [alice["id"]])
+        self.assertIsNone(self.store.get(bob["id"], "user-a"))
+        self.assertIsNone(self.store.revoke(bob["id"], "user-a"))
+        self.assertTrue(self.store.get(bob["id"], "user-b")["is_active"])
+
 
 if __name__ == "__main__":
     unittest.main()

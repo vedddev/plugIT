@@ -85,6 +85,7 @@ class AnalyticsTracker:
         cached: bool = False,
         success: bool = True,
         api_key_id: str = "anonymous",
+        user_id: str = "legacy-system",
     ):
 
         entry = RequestLog(
@@ -110,6 +111,7 @@ class AnalyticsTracker:
             try:
                 record_request(
                     api_key_id=api_key_id,
+                    user_id=user_id,
                     provider=provider,
                     model=model,
                     input_tokens=input_tokens,

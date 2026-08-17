@@ -142,14 +142,23 @@ def require_admin(x_admin_key: str | None = Header(default=None), rim_session: s
         return user
     expected = os.getenv("SMARTLLM_ADMIN_KEY")
     if expected and x_admin_key and secrets.compare_digest(x_admin_key, expected):
-        return {"id": "server-admin", "email": "server", "name": "Server admin", "role": "admin"}
+        # Server-admin fallback is only for legacy/server operations. It is not
+        # a wildcard tenant and therefore sees only legacy-owned analytics.
+        return {"id": "legacy-system", "email": "server", "name": "Server admin", "role": "admin"}
     raise AuthenticationError("Authentication required.")
 
 
-def verify_api_key(credentials):
-    api_key = credentials.credentials
-    dev_key = os.getenv("SMARTLLM_API_KEY")
-    if os.getenv("SMARTLLM_ENV", "development").lower() == "development" and dev_key:
-        if secrets.compare_digest(api_key, dev_key):
-            return "developer"
-    return key_store.authenticate(api_key)["id"]
+def require_api_key(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    """Authenticate OpenAI-compatible API calls from a Bearer token only."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Invalid Authorization header.")
+    return key_store.authenticate(token.strip())
+
+
+# Kept as an import-compatible name for any non-v1 callers. Unlike the old
+# HTTPBearer dependency it is a Header dependency, so FastAPI never exposes a
+# `credentials` query parameter.
+verify_api_key = require_api_key

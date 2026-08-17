@@ -130,7 +130,7 @@ class RoutingTests(unittest.TestCase):
         usage = MemoryUsageTracker()
         openai_routes.gateway, openai_routes.usage_tracker = gateway, usage
         try:
-            response = openai_routes._stream_response("Explain Python", None, None, "test-key")
+            response = openai_routes._stream_response("Explain Python", None, None, {"id": "test-key", "user_id": "test-user"})
             async def collect():
                 return [part async for part in response.body_iterator]
             events = asyncio.run(collect())
@@ -153,7 +153,7 @@ class RoutingTests(unittest.TestCase):
         openai_routes.gateway, openai_routes.usage_tracker = gateway, usage
         try:
             with self.assertRaises(ModelNotFoundError):
-                openai_routes._stream_response("hello", None, "does-not-exist", "test-key")
+                openai_routes._stream_response("hello", None, "does-not-exist", {"id": "test-key", "user_id": "test-user"})
         finally:
             openai_routes.gateway, openai_routes.usage_tracker = old_gateway, old_tracker
         self.assertEqual(usage.records[-1]["success"], False)
@@ -167,7 +167,7 @@ class RoutingTests(unittest.TestCase):
         usage = MemoryUsageTracker()
         openai_routes.gateway, openai_routes.usage_tracker = gateway, usage
         try:
-            response = openai_routes._stream_response("hello", None, None, "test-key")
+            response = openai_routes._stream_response("hello", None, None, {"id": "test-key", "user_id": "test-user"})
             async def collect():
                 return [part async for part in response.body_iterator]
             events = asyncio.run(collect())

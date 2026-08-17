@@ -104,10 +104,13 @@ class APIKeyStore:
 
     def authenticate(self, key: str) -> dict:
         with self._connection() as conn:
-            row = conn.execute("SELECT id,name,key_prefix,key_hash,is_active,expires_at FROM api_keys WHERE key_prefix=?", (self._prefix(key),)).fetchone()
-            if not row or not hmac.compare_digest(row[3], self._hash(key)):
+            row = conn.execute(
+                "SELECT id,name,key_hash,is_active,expires_at,user_id FROM api_keys WHERE key_prefix=?",
+                (self._prefix(key),),
+            ).fetchone()
+            if not row or not hmac.compare_digest(row[2], self._hash(key)):
                 raise AuthenticationError("Invalid API key.")
-            if not row[4] or (row[5] and utcnow() >= datetime.fromisoformat(row[5])):
+            if not row[3] or (row[4] and utcnow() >= datetime.fromisoformat(row[4])):
                 raise AuthenticationError("Invalid API key.")
             conn.execute("UPDATE api_keys SET last_used_at=?,updated_at=? WHERE id=?", (iso(utcnow()), iso(utcnow()), row[0]))
-        return {"id": row[0], "name": row[1]}
+            return {"id": row[0], "name": row[1], "user_id": row[5]}

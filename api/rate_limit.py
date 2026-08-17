@@ -1,6 +1,6 @@
 from fastapi import Depends, Response
 
-from api.auth import verify_api_key
+from api.auth import require_api_key
 from rate_limit.limiter import RateLimiter
 
 
@@ -12,9 +12,9 @@ limiter = RateLimiter(
 
 def rate_limit(
     response: Response,
-    api_key: str = Depends(verify_api_key),
+    api_key: dict = Depends(require_api_key),
 ):
-    result = limiter.check(api_key)
+    result = limiter.check(api_key["id"])
 
     response.headers["X-RateLimit-Limit"] = str(
         result["limit"]

@@ -28,6 +28,7 @@ class PreparedStream:
     model: str
     circuit: object
     api_key_id: str = "anonymous"
+    user_id: str = "legacy-system"
 
     def close(self) -> None:
         close = getattr(self.iterator, "close", None)
@@ -82,7 +83,7 @@ class SmartLLM:
             print(f"[Fallback] Primary skipped: {selection.provider} (circuit OPEN)")
         return self.fallback.execute(providers=self._fallback_providers(selection.provider), messages=messages, model_selector=self.selector.default_model, retry=self.retry, circuit_manager=self.circuit_manager)
 
-    def chat(self, prompt: str, system_prompt: str | None = None, model: str | None = None, api_key_id: str = "anonymous") -> ChatResponse:
+    def chat(self, prompt: str, system_prompt: str | None = None, model: str | None = None, api_key_id: str = "anonymous", user_id: str = "legacy-system") -> ChatResponse:
         selection = self._select(prompt, model)
         try:
             cached = self.cache.get(prompt=prompt, model=selection.model, system_prompt=system_prompt)
@@ -95,7 +96,7 @@ class SmartLLM:
             response = ChatResponse.from_dict(cached)
             response.latency_ms = 0.5
             response.metadata["cached"] = True
-            self.tracker.log(provider=response.provider, model=response.model, prompt=prompt, input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens, total_tokens=response.usage.total_tokens, latency_ms=response.latency_ms, cost=response.cost, cached=True, success=True, api_key_id=api_key_id)
+            self.tracker.log(provider=response.provider, model=response.model, prompt=prompt, input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens, total_tokens=response.usage.total_tokens, latency_ms=response.latency_ms, cost=response.cost, cached=True, success=True, api_key_id=api_key_id, user_id=user_id)
             return response
         print("[Cache] MISS")
         try:
@@ -105,13 +106,13 @@ class SmartLLM:
                 self.cache.set(prompt=prompt, model=selection.model, system_prompt=system_prompt, response=response.to_dict())
             except Exception as error:
                 print(f"[Cache] operation=set status=failed error={type(error).__name__}")
-            self.tracker.log(provider=response.provider, model=response.model, prompt=prompt, input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens, total_tokens=response.usage.total_tokens, latency_ms=response.latency_ms, cost=response.cost, success=True, api_key_id=api_key_id)
+            self.tracker.log(provider=response.provider, model=response.model, prompt=prompt, input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens, total_tokens=response.usage.total_tokens, latency_ms=response.latency_ms, cost=response.cost, success=True, api_key_id=api_key_id, user_id=user_id)
             return response
         except Exception:
-            self.tracker.log(provider=selection.provider, model=selection.model, prompt=prompt, input_tokens=0, output_tokens=0, total_tokens=0, latency_ms=0, cost=0, success=False, api_key_id=api_key_id)
+            self.tracker.log(provider=selection.provider, model=selection.model, prompt=prompt, input_tokens=0, output_tokens=0, total_tokens=0, latency_ms=0, cost=0, success=False, api_key_id=api_key_id, user_id=user_id)
             raise
 
-    def prepare_stream(self, prompt: str, system_prompt: str | None = None, model: str | None = None, api_key_id: str = "anonymous") -> PreparedStream:
+    def prepare_stream(self, prompt: str, system_prompt: str | None = None, model: str | None = None, api_key_id: str = "anonymous", user_id: str = "legacy-system") -> PreparedStream:
         """Open a stream and obtain its first delta before any HTTP bytes are sent.
 
         Only failures at this stage are eligible for retry/fallback.  Switching
@@ -132,7 +133,7 @@ class SmartLLM:
                 print(f"[Stream] Starting provider stream: {provider_name}")
                 iterator, first = self.retry.run(lambda: self._open_stream(provider, messages, chosen_model))
                 print("[Stream] First chunk received")
-                return PreparedStream(iterator, first, provider_name, chosen_model, circuit, api_key_id)
+                return PreparedStream(iterator, first, provider_name, chosen_model, circuit, api_key_id, user_id)
             except Exception as error:
                 circuit.record_failure()
                 failures[provider_name] = error
@@ -144,11 +145,11 @@ class SmartLLM:
         """Record a completed stream; ``None`` is a client-aborted stream."""
         if success is True:
             prepared.circuit.record_success()
-            self.tracker.log(provider=prepared.provider, model=prepared.model, prompt=prompt, input_tokens=0, output_tokens=0, total_tokens=0, latency_ms=0, cost=0, success=True, api_key_id=prepared.api_key_id)
+            self.tracker.log(provider=prepared.provider, model=prepared.model, prompt=prompt, input_tokens=0, output_tokens=0, total_tokens=0, latency_ms=0, cost=0, success=True, api_key_id=prepared.api_key_id, user_id=prepared.user_id)
             print("[Stream] Stream completed")
         elif success is False:
             prepared.circuit.record_failure()
-            self.tracker.log(provider=prepared.provider, model=prepared.model, prompt=prompt, input_tokens=0, output_tokens=0, total_tokens=0, latency_ms=0, cost=0, success=False, api_key_id=prepared.api_key_id)
+            self.tracker.log(provider=prepared.provider, model=prepared.model, prompt=prompt, input_tokens=0, output_tokens=0, total_tokens=0, latency_ms=0, cost=0, success=False, api_key_id=prepared.api_key_id, user_id=prepared.user_id)
             print("[Stream] Stream failed after it started; not falling back")
 
     def stream(self, prompt: str, system_prompt: str | None = None, model: str | None = None):

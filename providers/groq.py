@@ -83,6 +83,7 @@ class GroqProvider(BaseProvider):
         self,
         messages: list[ChatMessage],
         model: str,
+        **kwargs,
     ):
         stream = self.client.chat.completions.create(
             model=model,
@@ -94,6 +95,7 @@ class GroqProvider(BaseProvider):
                 for m in messages
             ],
             stream=True,
+            **kwargs,
         )
 
         for chunk in stream:

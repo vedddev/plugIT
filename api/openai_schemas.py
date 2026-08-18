@@ -25,6 +25,10 @@ class ChatCompletionRequest(BaseModel):
     model: str = "auto"
     messages: List[OpenAIMessage] = Field(min_length=1)
     stream: bool = False
+    # These are optional so existing OpenAI-compatible clients retain the
+    # exact request shape they use today.
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    max_tokens: int | None = Field(default=None, ge=1, le=32768)
 
 
 class ChoiceMessage(BaseModel):

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RIM Playground</title>
+</head>
+
+<body>
+
+    <h1>RIM Playground</h1>
+
+    <label>Model:</label>
+
+    <select id="model">
+        <option>Loading models...</option>
+    </select>
+
+    <br><br>
+
+    <button onclick="loadModels()">
+        Load Models
+    </button>
+
+    <pre id="output"></pre>
+
+<script>
+
+const RIM_KEY = "YOUR_RIM_KEY";
+
+async function loadModels() {
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/v1/models",
+            {
+                headers: {
+                    "Authorization": `Bearer ${RIM_KEY}`
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                data?.error?.message || "Failed to load models"
+            );
+        }
+
+        const select =
+            document.getElementById("model");
+
+        select.innerHTML = "";
+
+        for (const model of data.data) {
+
+            const option =
+                document.createElement("option");
+
+            option.value = model.id;
+
+            option.textContent =
+                `${model.id} (${model.owned_by})`;
+
+            select.appendChild(option);
+        }
+
+        document.getElementById("output").textContent =
+            JSON.stringify(data, null, 2);
+
+    } catch (error) {
+
+        document.getElementById("output").textContent =
+            "ERROR: " + error.message;
+
+        console.error(error);
+    }
+}
+
+loadModels();
+
+</script>
+
+</body>
+</html>

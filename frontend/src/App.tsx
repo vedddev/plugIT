@@ -7,6 +7,7 @@ import { ModelsPage } from "./pages/ModelsPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { UsagePage } from "./pages/UsagePage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { PlaygroundPage } from "./pages/PlaygroundPage";
 import { AppLayout } from "./layouts/AppLayout";
 import { useAuth } from "./services/AuthContext";
 import { ToastProvider } from "./services/toast";
@@ -27,7 +28,8 @@ function ProtectedRoutes() {
   return (
     <AppLayout key={user.id}>
       <Routes>
-        <Route path="/" element={<Navigate to="/overview" replace />} />
+        <Route path="/" element={<Navigate to="/playground" replace />} />
+        <Route path="/playground" element={<PlaygroundPage />} />
         <Route path="/overview" element={<OverviewPage />} />
         <Route path="/requests" element={<RequestsPage />} />
         <Route path="/providers" element={<ProvidersPage />} />
@@ -35,7 +37,7 @@ function ProtectedRoutes() {
         <Route path="/api-keys" element={<ApiKeysPage />} />
         <Route path="/usage" element={<UsagePage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/overview" replace />} />
+        <Route path="*" element={<Navigate to="/playground" replace />} />
       </Routes>
     </AppLayout>
   );

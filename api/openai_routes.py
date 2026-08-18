@@ -58,16 +58,23 @@ def chat(
     # ``auto`` is a gateway-level virtual model, not a provider model.
     model = None if request.model.strip().lower() == "auto" else request.model
 
+    generation = _generation_options(request)
     if request.stream:
-        return _stream_response(prompt, system_prompt, model, api_key)
+        return _stream_response(prompt, system_prompt, model, api_key, generation)
 
     try:
+        print("========================================")
+        print("[RIM] Requested model:", request.model)
+        print("[RIM] Model passed to gateway:", model)
+        print("[RIM] API key:", api_key["id"] if isinstance(api_key, dict) else api_key)
+        print("========================================")
         response = gateway.chat(
             prompt=prompt.strip(),
             system_prompt=system_prompt,
             model=model,
             api_key_id=api_key["id"],
             user_id=api_key["user_id"],
+            generation=generation,
         )
 
         usage_tracker.record(
@@ -125,7 +132,7 @@ def stream(
 
     system_prompt, prompt = _request_prompt(request)
     model = None if request.model.strip().lower() == "auto" else request.model
-    return _stream_response(prompt, system_prompt, model, api_key)
+    return _stream_response(prompt, system_prompt, model, api_key, _generation_options(request))
 
 
 def _request_prompt(request: ChatCompletionRequest) -> tuple[str | None, str]:
@@ -133,6 +140,13 @@ def _request_prompt(request: ChatCompletionRequest) -> tuple[str | None, str]:
     system_prompts = [message.content for message in request.messages if message.role == "system"]
     prompt = "\n".join(message.content for message in request.messages if message.role == "user")
     return ("\n".join(system_prompts) or None), prompt
+
+
+def _generation_options(request: ChatCompletionRequest) -> dict:
+    return {key: value for key, value in {
+        "temperature": request.temperature,
+        "max_tokens": request.max_tokens,
+    }.items() if value is not None}
 
 
 def _apply_rate_limit(response: Response, api_key_id: str) -> None:
@@ -147,7 +161,7 @@ def _sse(payload: dict | str) -> str:
     return f"data: {data}\n\n"
 
 
-def _stream_response(prompt: str, system_prompt: str | None, model: str | None, api_key: dict):
+def _stream_response(prompt: str, system_prompt: str | None, model: str | None, api_key: dict, generation: dict | None = None):
     """Preflight before returning StreamingResponse so failures retain HTTP status.
 
     A provider may be retried/fallen back only here, before any completion bytes
@@ -156,7 +170,7 @@ def _stream_response(prompt: str, system_prompt: str | None, model: str | None, 
     """
     print("[Stream] Request received")
     try:
-        prepared = gateway.prepare_stream(prompt=prompt, system_prompt=system_prompt, model=model, api_key_id=api_key["id"], user_id=api_key["user_id"])
+        prepared = gateway.prepare_stream(prompt=prompt, system_prompt=system_prompt, model=model, api_key_id=api_key["id"], user_id=api_key["user_id"], generation=generation)
     except ModelNotFoundError as error:
         usage_tracker.record(api_key=api_key["id"], success=False)
         raise

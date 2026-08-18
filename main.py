@@ -4,14 +4,14 @@ from dotenv import load_dotenv
 load_dotenv()
 RIM_URL = "http://127.0.0.1:8000/v1/chat/completions"
 
-RIM_KEY = os.getenv("SMARTLLM_ADMIN_KEY")
+RIM_KEY = "sk-smartllm-PRVzro0VdGNjVS5fa8SnJX5qNHzirl97ZInfur-amqo"
 
 body = {
-    "model": "llama-3.3-70b-versatile",
+    "model": "llama-3.1-8b-instant",
     "messages": [
         {
             "role": "user",
-            "content": "Hello my friend."
+            "content": "write code of two sum in python"
         }
     ]
 }

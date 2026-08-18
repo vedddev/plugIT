@@ -69,11 +69,11 @@ class SmartLLM:
     def _fallback_providers(self, primary: str) -> list[str]:
         return [name for name in self.registry.list() if name != primary]
 
-    def _call(self, selection: Selection, messages: list[ChatMessage]) -> ChatResponse:
+    def _call(self, selection: Selection, messages: list[ChatMessage], generation: dict | None = None) -> ChatResponse:
         circuit = self.circuit_manager.get(selection.provider)
         if circuit.allow_request():
             try:
-                response = self.retry.run(self.registry.get(selection.provider).chat, messages=messages, model=selection.model)
+                response = self.retry.run(self.registry.get(selection.provider).chat, messages=messages, model=selection.model, **(generation or {}))
                 circuit.record_success()
                 return response
             except Exception:
@@ -83,10 +83,11 @@ class SmartLLM:
             print(f"[Fallback] Primary skipped: {selection.provider} (circuit OPEN)")
         return self.fallback.execute(providers=self._fallback_providers(selection.provider), messages=messages, model_selector=self.selector.default_model, retry=self.retry, circuit_manager=self.circuit_manager)
 
-    def chat(self, prompt: str, system_prompt: str | None = None, model: str | None = None, api_key_id: str = "anonymous", user_id: str = "legacy-system") -> ChatResponse:
+    def chat(self, prompt: str, system_prompt: str | None = None, model: str | None = None, api_key_id: str = "anonymous", user_id: str = "legacy-system", generation: dict | None = None) -> ChatResponse:
         selection = self._select(prompt, model)
         try:
-            cached = self.cache.get(prompt=prompt, model=selection.model, system_prompt=system_prompt)
+            cached = (self.cache.get(prompt=prompt, model=selection.model, system_prompt=system_prompt, generation=generation)
+                      if generation else self.cache.get(prompt=prompt, model=selection.model, system_prompt=system_prompt))
         except Exception as error:
             # Cache availability must never prevent a provider request.
             print(f"[Cache] operation=get status=failed error={type(error).__name__}")
@@ -100,10 +101,13 @@ class SmartLLM:
             return response
         print("[Cache] MISS")
         try:
-            response = self._call(selection, self._messages(prompt, system_prompt))
+            response = self._call(selection, self._messages(prompt, system_prompt), generation)
             response.cost = self.calculator.calculate(response.provider, response.model, response.usage.input_tokens, response.usage.output_tokens)
             try:
-                self.cache.set(prompt=prompt, model=selection.model, system_prompt=system_prompt, response=response.to_dict())
+                if generation:
+                    self.cache.set(prompt=prompt, model=selection.model, system_prompt=system_prompt, generation=generation, response=response.to_dict())
+                else:
+                    self.cache.set(prompt=prompt, model=selection.model, system_prompt=system_prompt, response=response.to_dict())
             except Exception as error:
                 print(f"[Cache] operation=set status=failed error={type(error).__name__}")
             self.tracker.log(provider=response.provider, model=response.model, prompt=prompt, input_tokens=response.usage.input_tokens, output_tokens=response.usage.output_tokens, total_tokens=response.usage.total_tokens, latency_ms=response.latency_ms, cost=response.cost, success=True, api_key_id=api_key_id, user_id=user_id)
@@ -112,7 +116,7 @@ class SmartLLM:
             self.tracker.log(provider=selection.provider, model=selection.model, prompt=prompt, input_tokens=0, output_tokens=0, total_tokens=0, latency_ms=0, cost=0, success=False, api_key_id=api_key_id, user_id=user_id)
             raise
 
-    def prepare_stream(self, prompt: str, system_prompt: str | None = None, model: str | None = None, api_key_id: str = "anonymous", user_id: str = "legacy-system") -> PreparedStream:
+    def prepare_stream(self, prompt: str, system_prompt: str | None = None, model: str | None = None, api_key_id: str = "anonymous", user_id: str = "legacy-system", generation: dict | None = None) -> PreparedStream:
         """Open a stream and obtain its first delta before any HTTP bytes are sent.
 
         Only failures at this stage are eligible for retry/fallback.  Switching
@@ -131,7 +135,7 @@ class SmartLLM:
             provider = self.registry.get(provider_name)
             try:
                 print(f"[Stream] Starting provider stream: {provider_name}")
-                iterator, first = self.retry.run(lambda: self._open_stream(provider, messages, chosen_model))
+                iterator, first = self.retry.run(lambda: self._open_stream(provider, messages, chosen_model, generation))
                 print("[Stream] First chunk received")
                 return PreparedStream(iterator, first, provider_name, chosen_model, circuit, api_key_id, user_id)
             except Exception as error:
@@ -175,8 +179,8 @@ class SmartLLM:
         return generate()
 
     @staticmethod
-    def _open_stream(provider, messages, model):
-        iterator = iter(provider.stream_chat(messages=messages, model=model))
+    def _open_stream(provider, messages, model, generation: dict | None = None):
+        iterator = iter(provider.stream_chat(messages=messages, model=model, **(generation or {})))
         try:
             return iterator, next(iterator)
         except StopIteration as error:
